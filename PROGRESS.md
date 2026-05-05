@@ -98,3 +98,34 @@ Per issue: wat gedaan, wat vlot ging, en waar we tegen problemen liepen.
 - Geen — issue draaide vlot vergeleken met 1.3.
 
 **Belgische feestdagen-lijst** is hardgecodeerd voor 2026 ipv via een package. Reden: één jaar dekken volstaat voor dit project; `holidays`-package toevoegen voegt afhankelijkheid toe voor minimal value. Mocht de data uitbreiden naar andere jaren, dien de set uit te breiden of `holidays` toe te voegen.
+
+---
+
+## Issue 1.5 — EDA voor het Data-deel van de fiche
+
+**Wat gedaan**
+- [notebooks/02_eda.ipynb](notebooks/02_eda.ipynb) end-to-end uitvoerbaar via `jupyter nbconvert --execute`. Cels: imports → data load (calls/sales/gps) → 5 viz-cellen → observatie-markdown.
+- 5 figuren naar [reports/figures/](reports/figures/):
+  - [eda_calls_heatmap.png](reports/figures/eda_calls_heatmap.png) — calls per uur × top-12 zipcodes
+  - [eda_calls_map.png](reports/figures/eda_calls_map.png) — geografische scatter, beantwoord (blauw) vs onbeantwoord (rood)
+  - [eda_velocity_per_van.png](reports/figures/eda_velocity_per_van.png) — 3×3 grid snelheid-histograms top-9 actieve karren
+  - [eda_sales_per_daytype.png](reports/figures/eda_sales_per_daytype.png) — sales per uur per dag-type + omzet-totaal
+  - [eda_demand_supply_gap.png](reports/figures/eda_demand_supply_gap.png) — gestapelde bar beantwoord/onbeantwoord per dag-type (extra)
+- 5 concrete observaties opgesteld voor het Data-deel van de fiche (zie eind notebook).
+
+**Vlot**
+- Alle viz-code numeriek consistent met losse sanity-cijfers (vooraf in shell gecheckt → identiek aan notebook output).
+- nbconvert --execute draait de hele notebook in <1min; geen handmatige cells uit te voeren.
+- Velocity-histograms tonen visueel direct de "factor 5" snelheidsverschillen tussen karren — niet alleen mediaan-cijfers maar volledige distributie zichtbaar (kar 13 sterk gepiekt rond 1-2 m/s ≈ wandelend; kar 103 veel vlakker met staart tot 25 m/s ≈ regionaal).
+- Bonus-vondst tijdens schrijven: holiday-sales pieken om 13u (174 sales/uur), weekday om 14u, weekend om 12u — een verschuivende piek-uur per dag-type, mogelijk relevant voor voorraad-modellering.
+
+**Problemen**
+- `Path.cwd()` in een notebook zit op de notebook-directory bij nbconvert-execute. Loaders verwachten cwd=projectroot. Opgelost met een conditionele `os.chdir()` in cel 1.
+- Eerste versie observaties haalde "kar 13" als traagst aan op basis van top-9-by-volume; werkelijke globale traagste is kar 1 (1.5 m/s). Cel achteraf gecorrigeerd.
+
+**Observaties uitgelicht** (voor fiche)
+1. **Vraag-aanbod-gap piekt op feestdag** — 80% van 968 calls op 1 mei onbeantwoord (vs 60% weekday, 69% weekend) bij identieke fleet.
+2. **Sales-piek (~13-14u) ≠ calls-piek (~17u)** — avondvraag wordt niet door spontaan langsrijden opgevangen.
+3. **Karren rijden factor 5 verschillend** — mediaan 1.5 m/s (kar 1) tot 7.1 m/s (kar 103); suggereert lokale vs regionale routes.
+4. **+71% omzet op feestdag** — €12.948 vs €7.572 op 30/4 met dezelfde 15 karren.
+5. **45% van vraag in 5 zipcodes** (9160, 9240, 9100, 9200, 2880) — beperkt aantal H3-zones zal modellering domineren.

@@ -17,7 +17,8 @@
       "Bash(cat /tmp/c--Users-ralph-Documents-UCLL-B2S2-Advanced-AI-Advanced-AI-Project/9e890c22-a857-4dda-a442-b30d4af3dd67/tasks/bnso3b9k0.output 2>/dev/null || cat \"C:/Users/ralph/AppData/Local/Temp/claude/c--Users-ralph-Documents-UCLL-B2S2-Advanced-AI-Advanced-AI-Project/9e890c22-a857-4dda-a442-b30d4af3dd67/tasks/bnso3b9k0.output\" 2>&1 | tail -20)",
       "Read(//tmp/c--Users-ralph-Documents-UCLL-B2S2-Advanced-AI-Advanced-AI-Project/9e890c22-a857-4dda-a442-b30d4af3dd67/tasks/**)",
       "Bash(python -c \"import nbformat; nb=nbformat.read\\('notebooks/01_eda_zones.ipynb', as_version=4\\); print\\('valid notebook,', len\\(nb.cells\\), 'cells'\\)\")",
-      "Bash(python -W error -m src.context)"
+      "Bash(python -W error -m src.context)",
+      "Bash(jupyter nbconvert *)"
     ]
   }
 }
