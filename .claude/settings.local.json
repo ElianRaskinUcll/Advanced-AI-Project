@@ -8,7 +8,11 @@
       "Bash(make -n all)",
       "Bash(pip install *)",
       "Bash(xargs wc -l)",
-      "Bash(awk '{print $1}')"
+      "Bash(awk '{print $1}')",
+      "Bash(python -W error -m src.data.load)",
+      "Bash(awk 'NR==913 || NR==912 || NR==914 {print NR\": \"$0}' data/raw/foubertai_export/2026-04-30/07_calls.tsv data/raw/foubertai_export/2026-05-01/07_calls.tsv data/raw/foubertai_export/2026-05-02/07_calls.tsv)",
+      "Bash(python -c ' *)",
+      "Bash(python -W error -c ' *)"
     ]
   }
 }
