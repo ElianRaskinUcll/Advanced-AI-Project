@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem -Force | Where-Object { $_.Name -ne '.git' } | Select-Object Mode, Name)",
+      "PowerShell(Get-ChildItem -Force | Where-Object { $_.Name -ne '.git' } | Format-Table Mode, Name -AutoSize | Out-String)",
+      "PowerShell(tar -xzOf data/foubertai_export_3dagen.tar.gz foubertai_export/README.md 2>$null)",
+      "Bash(git ls-tree *)",
+      "Bash(xargs wc -l)"
+    ]
+  }
+}
