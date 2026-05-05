@@ -77,3 +77,24 @@ Per issue: wat gedaan, wat vlot ging, en waar we tegen problemen liepen.
 **Open punten voor later**
 - `total_revenue` per stop telt enkel matched sales; ~36% sales is unmatched en tellen niet mee. Bij voorraad-modelering moet hier rekening mee gehouden worden.
 - Sustained-presence (algoritme C) blijft conceptueel aantrekkelijker dan velocity-flagging, maar vereist andere GPS-sampling-eigenschappen dan deze fleet levert. Mocht een latere dataset wel uniforme sampling hebben, kan de aanpak heroverwogen worden.
+
+---
+
+## Issue 1.4 — Weer + kalender-context
+
+**Wat gedaan**
+- [src/context.py](src/context.py) met `fetch_weather()` (Open-Meteo Archive API), `add_day_type()`, `build_context()`.
+- Per uur temperatuur, neerslag en zonneschijn-duur opgehaald voor Bornem (51.10°N, 4.24°E), 30 apr — 2 mei 2026, in UTC.
+- `day_type` bepaald uit hardgecodeerde Belgische feestdagen 2026 + dayofweek: 30/4 → `weekday`, 1/5 → `holiday` (Dag van de Arbeid), 2/5 → `weekend`.
+- Output [data/processed/context.parquet](data/processed/context.parquet): 72 rijen (24×3), kolommen `(timestamp, temperature, precipitation, sunshine, day_type)`.
+- Plot [reports/figures/context_temperature.png](reports/figures/context_temperature.png) van temperatuur over 3 dagen.
+
+**Vlot**
+- Open-Meteo Archive heeft 2026-data — geen fallback nodig naar synthetic of nabij-jaar-substitutie zoals ik vooraf vreesde.
+- Geen extra dependency: `urllib` uit stdlib volstaat voor één GET-call (vs. `requests` toevoegen aan requirements).
+- DoD-checks beide groen: 0 NaNs in alle 5 kolommen, temperatuur-plot toont duidelijke diurnale cyclus (8-9°C 's nachts → 22-24°C op middag, twee zonnige + één frissere dag) — sluit aan bij wat je voor eind april in België verwacht.
+
+**Problemen**
+- Geen — issue draaide vlot vergeleken met 1.3.
+
+**Belgische feestdagen-lijst** is hardgecodeerd voor 2026 ipv via een package. Reden: één jaar dekken volstaat voor dit project; `holidays`-package toevoegen voegt afhankelijkheid toe voor minimal value. Mocht de data uitbreiden naar andere jaren, dien de set uit te breiden of `holidays` toe te voegen.
