@@ -45,3 +45,35 @@ Per issue: wat gedaan, wat vlot ging, en waar we tegen problemen liepen.
 
 **Open punt voor later**
 - `zone` mengt nu twee semantieken: `icecream_van_zone_id` voor operationele events vs `address_zipcode` voor klant-events. Bij behoefte aan harmonisatie → eigen issue.
+
+---
+
+## Issue 1.3 — Verkooppunten reverse-engineeren + zone-systeem
+
+**DoD-aanpassing:** oorspronkelijk ≥70% sales gematcht — bijgesteld naar **≥60%** na data-exploratie. Behaald: **63,9%** ✅.
+
+**Wat gedaan**
+- [src/zones.py](src/zones.py) met `cluster_stops()`, `match_sales_to_stops()`, `build_stops_and_zones()`.
+- DBSCAN-clustering op trage GPS (`velocity<0.5 m/s`), haversine-metric, eps=50m.
+- Matching per sale: dichtste geclusterd GPS-punt van **dezelfde van** binnen 100m + ±5min.
+- H3 hexagons resolutie 9 (~150m) als zone-systeem; per stop en per sale toegewezen.
+- Outputs: [data/processed/stops.parquet](data/processed/stops.parquet) (586 stops, 9 kolommen) en [data/processed/zones.geojson](data/processed/zones.geojson) (575 hexagons).
+- Documentatie + Challenges-framing in [notebooks/01_eda_zones.ipynb](notebooks/01_eda_zones.ipynb).
+- `scikit-learn` en `h3>=4` toegevoegd aan requirements.
+
+**Vlot**
+- Zone-keuze (H3 res 9) was rechttoe rechtaan motiveerbaar: `area_id`/`zone_id` is operationeel-per-shift, niet ruimtelijk; H3 geeft een deterministische map van willekeurige (lat, lng) naar zone, op de juiste schaal voor onze stop-radius.
+- Eens parameters bijgesteld (zie hieronder): pipeline draait warning-vrij in ~2s (BallTree haversine doet zwaar werk).
+- Toevallige bug in `load_gps`: één leeg bestand (`van_15.tsv` op 2 mei) gaf FutureWarning bij `pd.concat`. Direct opgelost door empty frames te skippen.
+
+**Problemen — pivot-verhaal**
+- **Issue-parameters letterlijk gevolgd** (`min_samples=10`): match-rate **20,5%**, ver onder DoD.
+- **Diagnose:** GPS-sampling is bursty. Slechts 0,76% van GPS-punten heeft `velocity<0.5`; **maximaal 4** trage punten binnen 100m+5min van enige sale. `min_samples=10` clustert daardoor enkel langdurige depot-stays — echte verkoop-stops vallen buiten elk cluster. Concreet voorbeeld in inspectie: een van die 3,5 min op een sale-locatie staat genereert maar 1 GPS-punt met `velocity=0`; sampling-gaps tot 73s tijdens stilstand.
+- **Pivot 1:** Per (van, dag) clusteren om time-windows realistisch te houden → 19,5% (geen wezenlijke verbetering: clusters blijven schaars).
+- **Pivot 2:** Algoritme C voorgesteld — temporal density (≥3 buren binnen 50m+5min) en variant met "all neighbors within radius" (sustained-presence). Test: standaard temporal density flagde **99% van GPS** als stationary (sampling tijdens rijden is zo dicht dat 5min-venster altijd ≥3 buren binnen 50m heeft). Striktere "sustained-presence" variant gaf 1,7-24% flagged maar slechts **25,6%** match-rate — fundamentele mismatch tussen sample-pattern en algoritme-aanname.
+- **Resolutie:** stop-detectie blijft velocity-gebaseerd (zoals de issue), maar `min_samples` van 10 → **2**. Met deze lenientie cluster bijna elk traag GPS-punt in een paar; sales matchen aan dichtste cluster-lid van dezelfde van → **63,9%** match-rate.
+- **Halt en vragen ipv stilletjes afwijken:** ik pauzeerde voor de DoD-bijstelling om gebruiker mee te beslissen — gevalideerde aanpak. Bewaard als feedback voor toekomstige conflicten tussen issue-tekst en data-realiteit.
+
+**Open punten voor later**
+- `total_revenue` per stop telt enkel matched sales; ~36% sales is unmatched en tellen niet mee. Bij voorraad-modelering moet hier rekening mee gehouden worden.
+- Sustained-presence (algoritme C) blijft conceptueel aantrekkelijker dan velocity-flagging, maar vereist andere GPS-sampling-eigenschappen dan deze fleet levert. Mocht een latere dataset wel uniforme sampling hebben, kan de aanpak heroverwogen worden.

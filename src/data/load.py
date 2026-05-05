@@ -184,19 +184,19 @@ def load_gps() -> pd.DataFrame:
     frames = []
     for d in DATES:
         for path in sorted((RAW_DIR / d / "gps").glob("van_*.tsv")):
-            frames.append(
-                _read_tsv(
-                    path,
-                    parse_dates=["created_at"],
-                    dtype={
-                        "id": "int64",
-                        "icecream_van_id": "int64",
-                        "latitude": "float64",
-                        "longitude": "float64",
-                        "velocity": "float64",
-                    },
-                )
+            df = _read_tsv(
+                path,
+                parse_dates=["created_at"],
+                dtype={
+                    "id": "int64",
+                    "icecream_van_id": "int64",
+                    "latitude": "float64",
+                    "longitude": "float64",
+                    "velocity": "float64",
+                },
             )
+            if not df.empty:
+                frames.append(df)
     return pd.concat(frames, ignore_index=True)
 
 
