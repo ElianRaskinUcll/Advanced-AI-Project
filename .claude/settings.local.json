@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git check-ignore *)",
+      "Bash(git mv *)",
+      "Bash(git rm *)",
+      "Bash(git add *)",
+      "Bash(make -n all)",
+      "Bash(pip install *)",
+      "Bash(xargs wc -l)",
+      "Bash(awk '{print $1}')"
+    ]
+  }
+}
