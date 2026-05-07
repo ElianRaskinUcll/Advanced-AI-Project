@@ -33,7 +33,8 @@
       "PowerShell(python -c \"import pandas; import torch; print\\('pandas-torch ok'\\)\")",
       "PowerShell(python -c \"import torch; import pandas; print\\('torch-pandas ok'\\)\")",
       "PowerShell(jupyter nbconvert --to notebook --execute notebooks/03_forecast_comparison.ipynb --output 03_forecast_comparison.ipynb 2>&1)",
-      "Bash(python -W error -m src.env.dispatcher_env)"
+      "Bash(python -W error -m src.env.dispatcher_env)",
+      "PowerShell(python -m src.env.dispatcher_env 2>&1)"
     ]
   }
 }

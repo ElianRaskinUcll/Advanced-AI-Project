@@ -357,3 +357,45 @@ Dit is letterlijk een textbook-Challenge: per-row MAE was de verkeerde metric, e
 **Open (latere issues)**
 - 3.3+ moet de spec implementeren in `DispatcherEnv` (state-uitbreiding, action `STAY`, reward-functie, travel-tijd via `distance_km / 25 km/u`).
 - α/β/γ zijn een eerste pin; reward-shaping experimenten kunnen ze tunen.
+
+---
+
+## Issue 3.3 — Demand forecaster integration
+
+**Wat gedaan**
+- [src/env/forecast_service.py](src/env/forecast_service.py) — `ForecastService` als black-box: laadt Transformer + scaler één keer, biedt `forecast_day(date)` met **caching** (1× per date) en `sample_nr_of_people(rng)` op basis van empirische distributie van historische calls (categorieën `1-2`, `3-4`, …, `10+` met midpoints).
+- [src/env/dispatcher_env.py](src/env/dispatcher_env.py) — env hangt forecaster in via constructor, cached in `reset()`, gebruikt in `step()` om calls te samplen via Poisson. Universe veranderd van zones.geojson (575) naar features.parquet zones (**911**) zodat alle door de Transformer geziene zones bereikbaar zijn.
+- `__main__` simuleert alle 3 dagen en rapporteert sim vs historisch.
+
+**DoD ✅ — call volumes per dag:**
+
+| Datum | Simulated | Historical | Delta |
+|---|---:|---:|---:|
+| 2026-04-30 (weekday) | 379 | 363 | **+4%** |
+| 2026-05-01 (holiday) | 771 | 968 | -20% |
+| 2026-05-02 (weekend) | 274 | 435 | -37% |
+
+Alle drie binnen ~40% van historiek; weekday quasi perfect. Resterende undershoot op feestdag/weekend = de bekende Transformer-magnitude-onderschatting uit issue 2.4 (open punt voor calibratie-issue).
+
+**Challenge gedurende de implementatie — semantiek-mismatch in `λ = forecast`**
+
+Initiële letter-getrouwe implementatie (`λ = forecast` direct uit Transformer) leverde **+46% tot +120%** over-simulatie op (799/1644/634 vs 363/968/435). Diagnose: de Transformer is getraind op `demand = n_sales + n_calls`, niet op calls alleen. Door `λ = forecast` rechtstreeks te gebruiken werd de hele demand (sales + calls) geïnterpreteerd als call-rate → consistent dubbel zoveel calls als verwacht.
+
+Fix: scale `λ = forecast × call_fraction × slice_fraction` waar `call_fraction = total_calls / (total_calls + total_sales) = 1.766/3.985 ≈ 0.443` — empirisch berekend in `ForecastService.__init__()` zodat de implementatie self-consistent is met de ingelezen data.
+
+| Fase | Aanpak | Avg afwijking |
+|---|---|---:|
+| Letterlijke spec (`λ = forecast`) | direct demand als call-rate | +79% (over) |
+| **Met `call_fraction` scaling** | demand → calls via empirisch ratio | **±20%** (binnen ballpark) |
+
+Dat is letterlijk een Challenge-sectie voor de fiche: spec vs data-realiteit conflict, gediagnosticeerd, gefixed met empirische maat.
+
+**Vlot**
+- Caching werkt: forecast wordt 1× per (date) berekend, hergebruikt over 66 steps.
+- nr_of_people-sampling reflecteert historische distributie: `1-2` blijft de grootste categorie, `10+` zeldzaam — natuurlijk gewicht.
+- Zone-universe consistent gemaakt (911 zones uit features.parquet) zodat geen forecast wordt weggegooid.
+
+**Open punten voor latere issues**
+- Magnitude-undershoot op feestdag/weekend (-20%/-37%) → calibration of log-target retrain (zelfde open punt als 2.4).
+- `call_fraction` is globaal; per-zone of per-uur kan beter zijn (drukkere uren mogelijk meer calls per sale). Niet vandaag.
+- Pending-calls slot in observation (uit MDP-spec) nog niet geïntegreerd → 3.4.
