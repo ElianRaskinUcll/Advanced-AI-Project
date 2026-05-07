@@ -21,7 +21,19 @@
       "Bash(jupyter nbconvert *)",
       "Bash(python -W error -m src.features.build_features)",
       "Bash(python -c \"import optuna, shap, xgboost; print\\('optuna', optuna.__version__, 'shap', shap.__version__, 'xgboost', xgboost.__version__\\)\")",
-      "Bash(python -m src.models.xgb_forecast)"
+      "Bash(python -m src.models.xgb_forecast)",
+      "Bash(python -c \"import torch; print\\(torch.__version__, 'cuda:', torch.cuda.is_available\\(\\), 'cpu cores:', torch.get_num_threads\\(\\)\\)\")",
+      "Bash(python -m src.models.transformer_forecast)",
+      "PowerShell(python -c \"import torch; print\\(torch.__version__\\)\")",
+      "PowerShell(python -m src.models.transformer_forecast 2>&1)",
+      "PowerShell(python -c \"import sys; sys.path.insert\\(0,'.'\\); from src.models.transformer_forecast import TransformerForecast; print\\('imports OK'\\)\")",
+      "PowerShell(python -c \"import numpy; print\\('numpy ok'\\); import torch; print\\('torch ok'\\)\")",
+      "PowerShell(python -c \"import matplotlib; matplotlib.use\\('Agg'\\); import matplotlib.pyplot as plt; import numpy; import sklearn; import torch; print\\('all ok'\\)\")",
+      "PowerShell(python -c \"import math, pickle; from copy import deepcopy; from pathlib import Path; import matplotlib; matplotlib.use\\('Agg'\\); import matplotlib.pyplot as plt; import numpy; import pandas; import torch; import torch.nn; from sklearn.metrics import mean_absolute_error, mean_squared_error; from sklearn.preprocessing import StandardScaler; from torch.utils.data import DataLoader, TensorDataset; print\\('all ok'\\)\")",
+      "PowerShell(python -c \"import pandas; import torch; print\\('pandas-torch ok'\\)\")",
+      "PowerShell(python -c \"import torch; import pandas; print\\('torch-pandas ok'\\)\")",
+      "PowerShell(jupyter nbconvert --to notebook --execute notebooks/03_forecast_comparison.ipynb --output 03_forecast_comparison.ipynb 2>&1)",
+      "Bash(python -W error -m src.env.dispatcher_env)"
     ]
   }
 }

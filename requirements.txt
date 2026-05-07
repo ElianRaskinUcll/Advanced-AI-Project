@@ -8,3 +8,5 @@ h3>=4
 xgboost
 optuna
 shap
+torch
+gymnasium
