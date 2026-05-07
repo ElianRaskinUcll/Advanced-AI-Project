@@ -654,3 +654,44 @@ Per dag lift: +203% (30/4), +173% (1/5), +239% (2/5). Drie keer zoveel sales puu
 **Open punten voor latere issues**
 - Forecast-fix (issue 2.4 open punt) heeft nu meetbaar prioriteit boven verdere agent-tweaks. Quick-win: XGBoost retrainen met `objective=reg:squarederror` of Transformer met log-target.
 - N_SEEDS verhogen tot 10 in een definitieve eval-run vóór de fiche, na profiling-optimalisatie van `mean_response_min`.
+
+---
+
+## Issue 5.1 — Evaluation metrics suite
+
+**Wat gedaan**
+- [src/eval/metrics.py](src/eval/metrics.py) met de 6 vereiste metric-functies + `evaluate_episode(agent_factory, env, date, seed, name)` als één-call wrapper:
+  - `pct_calls_answered(info)` — sales / (sales + calls).
+  - `total_revenue_eur(info)` — sales × €14 (mean uit EDA: €31k / 2.219 sales).
+  - `total_distance_km(actions_history, env)` — haversine over zone-overgangen per van.
+  - `mean_response_min(env, actions_history)` — gem. delay tussen call-creatie en eerste van-aankomst.
+  - `fairness_gini(env)` — Gini-coefficient over service_rate per demand-zone (≥5 events). 0 = perfect gelijk, ~1 = enkele zones gehamerd, anderen genegeerd.
+  - `neglected_zones_pct(env)` — % van demand-zones (≥5 events) waar 0 sales gebeurden.
+- [scripts/run_evaluation.py](scripts/run_evaluation.py) als één-commando entrypoint. Path-bootstrap aan top zodat `python scripts/run_evaluation.py` direct werkt zonder `python -m`.
+
+**DoD ✅** — `python scripts/run_evaluation.py` produceert [results/eval_summary.csv](results/eval_summary.csv) met **75 rijen** (5 agents × 3 dagen × 5 seeds) en alle 8 metric-kolommen plus identificatie (agent, date, seed). Draait in ~115 sec.
+
+**Aggregaten (mean over 3 dagen × 5 seeds)**
+
+| Agent | % answered | Revenue (EUR) | Distance (km) | Response (min) | Gini | Neglected % |
+|---|---:|---:|---:|---:|---:|---:|
+| **q_learning** | **30.6** | **2.765** | 1.947 | 57 | 0.17 | **1.94** |
+| dqn | 28.1 | 2.603 | 3.703 | 78 | 0.19 | 3.61 |
+| historical | 20.4 | 1.659 | 4.766 | 122 | 0.20 | 8.98 |
+| greedy | 19.5 | 1.575 | **1.121** | **22** | **0.15** | 2.25 |
+| random | 14.7 | 1.085 | 12.677 | 149 | 0.18 | 22.06 |
+
+Q-learning leidt op revenue, % answered én neglected-zones. Greedy is "snelst" (laagste response time, kortste afstand) maar haalt minder totale revenue — bevestigt het patroon uit issue 4.4 (greedy chase't, RL pool't).
+
+**Vlot**
+- Modulariteit: `evaluate_episode` is herbruikbaar voor andere notebooks/scripts; metrics-functies zijn los testbaar.
+- Path-bootstrap pattern in scripts/ houdt `python scripts/X.py` simpel; geen PYTHONPATH-truc nodig.
+- 75 episodes in 115 sec — historical (replay-build) is de bottleneck (~30s per dag); random/greedy/Q/DQN draaien <2s per episode.
+
+**Problemen**
+- Eerste run: `ModuleNotFoundError: No module named 'src'` omdat scripts/ niet automatisch op sys.path zit. Gefixt met expliciete `sys.path.insert(0, project_root)` als eerste regels van het script.
+
+**Open punten**
+- N_SEEDS=5 voor draaitijd; bij definitieve fiche-run kunnen we dit naar 10+ optillen (het script accepteert dat als parameter — nu hardcoded constant, eventueel CLI-vlag toevoegen).
+- Fairness-metric is bewust vereenvoudigd (Gini op service-rate). Een "demand-weighted" variant (zwaardere weging voor hogere-demand zones) zou nuttiger zijn voor stakeholders.
+- "Calls answered" is nog een proxy (= sales). Wanneer dispatching-lifecycle in env bestaat, kan deze metric exacter gedefinieerd worden.
