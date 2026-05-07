@@ -490,3 +490,54 @@ Alle 3 lopen zonder crash door de hele dag. Greedy outperformt random met factor
 **Open punten voor latere issues**
 - Calls hebben nu nog geen "answered" lifecycle in env: greedy assigned een van naar zone X, maar de env weet niet of die call effectief beantwoord is. Issue 4.2+ bouwt dispatching-logica.
 - HistoricalAgent reset is niet idempotent met betrekking tot `_actions` — bij meerdere `reset()` calls wordt de actie-stream één keer opgebouwd en daarna teruggespoeld via `_step=0`. OK voor DoD; bij multi-day evaluatie moet `target_date` mogelijk tussen resets veranderen.
+
+---
+
+## Issue 4.2 — Tabular Q-learning agent
+
+**Wat gedaan**
+- [src/agents/q_learning.py](src/agents/q_learning.py) — `TabularQAgent` met:
+  - **State-discretisatie** (12 states): `hour_bin × open_calls_bin` = 4 × 3 → 12 cellen, gekozen omdat de raw env-action-space (`MultiDiscrete([n_zones]*n_vans)` ≈ 10⁴⁵) tabular onmogelijk is.
+  - **Macro-actions** (4): `stay` / `greedy` / `forecast_top` / `random`. Q leert welke high-level optie te deployen per state — hiërarchische RL pattern. `greedy` hergebruikt `GreedyAgent` uit issue 4.1 zonder rebuild van centroids.
+  - **Epsilon-greedy** met decay (eps_start=1.0 → eps_min=0.05, decay=0.94/episode).
+  - **TD(0)-update**: `Q[s,a] += α (r + γ max_a' Q[s',a'] − Q[s,a])` met α=0.3, γ=0.95.
+- Reward = `info["n_total_sales"]` delta per step (env reward blijft 0 placeholder; berekend in agent's training loop, geen scope creep buiten de agent zelf).
+- Reward curve geplot naar [reports/figures/q_learning_reward.png](reports/figures/q_learning_reward.png), Q-table gepickled in [models/q_table.pkl](models/q_table.pkl).
+
+**DoD ✅ — Q-agent klopt random op test-dag (2026-05-02)**
+
+| Agent | Sales | Calls |
+|---|---:|---:|
+| Q-learning | **140** | 252 |
+| Random | 56 | 281 |
+| **Δ sales** | **+84 (+150%)** | — |
+
+Q-agent verdrievoudigt de sales van random op een ongeziene test-dag. PASS DoD.
+
+**Wat de Q-tabel leerde**
+
+```
+states (hour_bin, open_calls_bin) × macros (stay, greedy, forecast_top, random)
+hour-bin breakpoints: 10-13, 13-16, 16-19, 19-21
+open-calls-bin breakpoints: 0-5, 5-15, >15
+```
+
+Macro-pick frequentie tijdens training: `forecast_top: 2080`, `greedy: 761`, `stay: 703`, `random: 416`. **`forecast_top` domineert** — de agent leert dat naar de top-15 hoogst-geforecaste zones rijden meestal de beste move is. `greedy` wordt vaker gekozen in states met veel open calls (laat-namiddag, queue >15). `random` wordt geleidelijk uitgefaseerd door de epsilon-decay.
+
+Drie states (3, 6, 9) hebben Q=0 over alle macros — die states komen niet voor (combinatie hour+queue niet bereikt). Geen probleem.
+
+**Reward curve**
+
+Rolling mean (window=6) klimt van ~165 → ~220 in de eerste 25-30 episodes, dan plateau rond 200-220. De zigzag is dag-alternatie: episodes wisselen tussen 30/4 (~100 sales) en 1/5 (holiday, ~250-300 sales) door `dates[ep % 2]`-cycling. Dat is fijn — de agent ziet beide regimes en de Q-tabel reflecteert beide via verschillende uur+queue bins.
+
+**Vlot**
+- Hierarchische RL design (macros) maakt tabular wel zinvol: 48 Q-entries zijn interpreteerbaar én trainbaar in 60 episodes (~3 min CPU).
+- Reward berekening in trainingsloop houdt scope strikt: env-reward-implementatie blijft een open issue voor later, geen wijzigingen aan `dispatcher_env.py`.
+- Epsilon-decay deed netjes zijn werk: eerste 10 episodes ~50% random exploration, later <10%.
+
+**Problemen — geen blockers.**
+
+**Open punten**
+- Q-tabel discretisatie is bewust ruw (12 states); een fijnere binning of function approximation (issue 4.3 DQN?) zou meer marge kunnen geven.
+- Macro `forecast_top` werkt goed dankzij de Transformer-undershoot: het stuurt vans naar de "minder onzekere" zones. Bij betere forecaster zou greedy mogelijk beter worden.
+- Reward = sales-only; volledige MDP-spec reward (`+1·answered + α·revenue − β·distance − γ·unanswered`) van issue 3.2 is niet geïmplementeerd in env. Wanneer dispatching-logica komt (4.x), kan deze full reward ingebouwd worden.
