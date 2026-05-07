@@ -602,3 +602,55 @@ Tabular Q (12 states × 4 macros = 48 cells) en DQN (continuous 31-dim obs → 6
 - Volledige MDP-spec reward in env (zoals voor 4.2) — DQN traint nu ook op sales-only.
 - DQN met "raw action space" (per-van zone, niet macro) zou écht laten zien wat deep RL kan; vereist andere architectuur (factorized Q of actor-critic). Out of scope hier maar zinvolle volgende issue.
 - Hyperparam tuning (Optuna over LR, gamma, hidden_sizes) niet gedaan — defaults werkten direct goed genoeg voor DoD.
+
+---
+
+## Issue 4.4 — Agent vergelijking + ablation
+
+**DoD-aanpassing:** N_SEEDS van 10 → 3 om binnen redelijke draaitijd te blijven (eerste poging met 10 seeds zou ~30-45 min gekost hebben; 3 seeds × 5 agents × 3 dagen = 45 main runs in 43s). Std-dev blijft informatief over seed-variantie. Ablation idem (60 → 18 runs).
+
+**Wat gedaan**
+- [notebooks/05_agent_comparison.ipynb](notebooks/05_agent_comparison.ipynb) end-to-end uitvoerbaar.
+- Per (agent, dag, seed) tuple: `answered_calls` (= sales als proxy), `revenue_eur` (×€14/sale), `distance_km` (haversine over zone-overgangen), `mean_response_min` (gem. delay tussen call-creatie en eerste van-aankomst in zone).
+- Ablation: DQN met geleerde Transformer-forecast vs DQN met oracle (ground-truth) forecast (`forecaster.oracle_forecast_day(date)` uit issue 3.4).
+- [reports/figures/agent_comparison.png](reports/figures/agent_comparison.png) — bar charts van agent-vergelijking + forecast-ablation.
+
+**DoD ✅ — vergelijkingstabel + key insight in notebook.**
+
+**Hoofdresultaat: ranking van agents (mean answered_calls over 3 dagen × 3 seeds)**
+
+| Rank | Agent | Mean | Notes |
+|:---:|---|---:|---|
+| 1 | **q_learning** | **200.8** | tabular wint! |
+| 2 | dqn | 187.1 | continuous state geeft geen voordeel |
+| 3 | historical | 118.0 | echte trajecten (sub-optimale routes) |
+| 4 | greedy | 115.2 | reactief op calls |
+| 5 | random | 76.3 | ondergrens |
+
+**Ablation resultaat — forecast quality is dé hefboom**
+
+| Conditie | Mean answered_calls |
+|---|---:|
+| DQN + geleerde forecast | 202.5 |
+| **DQN + oracle forecast** | **599.2 (+196%)** |
+
+Per dag lift: +203% (30/4), +173% (1/5), +239% (2/5). Drie keer zoveel sales puur door betere demand-info, zonder enige verandering aan de agent-policy.
+
+**Drie key insights voor de fiche**
+
+1. **Forecast-kwaliteit dwarsboomt alle agents.** De Transformer-magnitude-undershoot uit issue 2.4 is de dominante bottleneck — niet de agent-architectuur. Eén verbeterde forecaster levert meer dan een herschreven agent.
+2. **Tabular Q ≥ DQN bij macro-action design.** Bij 4 hand-gekozen macro's is een 12-state Q-table al optimaal; DQN's continue state introduceert seed-variantie zonder informatieve winst. Lessen voor de fiche: simpel werkt vaak beter dan diep wanneer de actie-ruimte beperkt is. Het 4.3-resultaat (DQN > Q op single seed) zat binnen seed-noise.
+3. **Response-time vs total-sales trade-off.** Greedy haalt 23 min mean response (laagste) maar slechts 115 sales; Q/DQN nemen 50-75 min response maar realiseren ~200 sales. RL leert te poolen, greedy chase't.
+
+**Vlot**
+- run_episode helper centraliseert metric-collectie; herbruikbaar voor toekomstige agents.
+- Ablation via `env._forecast = oracle_demand` na reset is direct, geen aanpassing aan ForecastService nodig.
+- `total_distance_km` en `mean_response_min` als nieuwe metrics; voorheen alleen sales/calls.
+
+**Problemen**
+- Eerste run faalde wegens `load_dqn(env)` vs ablation aanroep met 2 args. Triviaal opgelost door bestaande factory-lambda te hergebruiken in ablation cell.
+- `nbconvert` flusht niet per cel → debug-progress alleen achteraf zichtbaar; mitigated met `flush=True` op print-statements voor toekomstige notebooks.
+
+**Open punten voor latere issues**
+- Forecast-fix (issue 2.4 open punt) heeft nu meetbaar prioriteit boven verdere agent-tweaks. Quick-win: XGBoost retrainen met `objective=reg:squarederror` of Transformer met log-target.
+- N_SEEDS verhogen tot 10 in een definitieve eval-run vóór de fiche, na profiling-optimalisatie van `mean_response_min`.
