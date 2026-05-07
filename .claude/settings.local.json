@@ -18,7 +18,10 @@
       "Read(//tmp/c--Users-ralph-Documents-UCLL-B2S2-Advanced-AI-Advanced-AI-Project/9e890c22-a857-4dda-a442-b30d4af3dd67/tasks/**)",
       "Bash(python -c \"import nbformat; nb=nbformat.read\\('notebooks/01_eda_zones.ipynb', as_version=4\\); print\\('valid notebook,', len\\(nb.cells\\), 'cells'\\)\")",
       "Bash(python -W error -m src.context)",
-      "Bash(jupyter nbconvert *)"
+      "Bash(jupyter nbconvert *)",
+      "Bash(python -W error -m src.features.build_features)",
+      "Bash(python -c \"import optuna, shap, xgboost; print\\('optuna', optuna.__version__, 'shap', shap.__version__, 'xgboost', xgboost.__version__\\)\")",
+      "Bash(python -m src.models.xgb_forecast)"
     ]
   }
 }

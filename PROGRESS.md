@@ -129,3 +129,67 @@ Per issue: wat gedaan, wat vlot ging, en waar we tegen problemen liepen.
 3. **Karren rijden factor 5 verschillend** — mediaan 1.5 m/s (kar 1) tot 7.1 m/s (kar 103); suggereert lokale vs regionale routes.
 4. **+71% omzet op feestdag** — €12.948 vs €7.572 op 30/4 met dezelfde 15 karren.
 5. **45% van vraag in 5 zipcodes** (9160, 9240, 9100, 9200, 2880) — beperkt aantal H3-zones zal modellering domineren.
+
+---
+
+## Issue 1.6 — Tabular feature-set voor forecasting model
+
+**Wat gedaan**
+- [src/features/build_features.py](src/features/build_features.py) met `build_features()`, `_aggregate_demand()` en `leave_one_day_out_splits()` als CV-helper.
+- Granulariteit: H3 cell (resolutie 9, gekozen in issue 1.3) × hourly timestamp.
+- Target: `demand = n_sales + n_calls` per (zone, hour).
+- Features: `hour`, `day_type` (uit context.parquet), weather (`temperature`, `precipitation`, `sunshine`), lag features (`demand_lag_1`, `demand_lag_2`), `demand_rolling_3h` (rolling mean over [t-3, t-1]), zone-encoding (`zone_lat`, `zone_lng` van H3-centroid).
+- Carthesisch product van 911 zones × 72 uren = **65.592 rijen × 17 kolommen** in [data/processed/features.parquet](data/processed/features.parquet).
+- `fold`-kolom (0/1/2) maps elke datum naar een leave-one-day-out fold; helper `leave_one_day_out_splits()` levert `(train_idx, test_idx)` paren.
+
+**Vlot**
+- Target-totaal sanity: 3.985 = exact 2.219 sales + 1.766 calls — niets verloren in aggregation.
+- DoD-verificatie via expliciete script: `demand_lag_1`, `demand_lag_2` en `demand_rolling_3h` cel-voor-cel vergeleken met re-derivation uit raw demand → 100% match. Static features (zone_lat/lng) constant per cel. Geen NaNs.
+- Pipeline draait warning-vrij in ~3s.
+
+**Problemen — geen blockers**
+- 911 zones is meer dan de 575 in zones.geojson omdat calls H3-cellen kunnen raken die niet in stops/sales voorkwamen. Voor het model is dat juist nuttig (ook zones met enkel calls hebben future demand). Zones.geojson kan eventueel later uitgebreid worden, maar dat is geen blokker hier.
+- Sparse target: 2.214 / 65.592 rijen (3.4%) hebben demand > 0. Normaal voor spatial-temporal forecasting; modellen moeten kunnen omgaan met veel nullen.
+
+**Open punt voor later (subtle CV-leakage, geen DoD-issue)**
+- Lag features kruisen dag-grenzen: bv. `demand_lag_1` voor 1 mei 00:00 = demand 30 apr 23:00. Bij leave-one-day-out CV op fold 0 (test = 30 apr) zit die 30-apr demand nog steeds in lags voor 1 mei (train) — strikt correct in de tijd, maar het CV-fold krijgt indirect informatie over de test-set via lags. Voor feature-leakage in DoD-zin (`geen toekomstige info`) is dat geen probleem — alle features kijken naar het verleden. Voor nette CV-evaluatie kan men lag-features per fold opnieuw berekenen of de eerste 2 uur van elke train-dag droppen. Documenteren in modeling-issue.
+
+---
+
+## Issue 1.7 — XGBoost forecasting baseline
+
+**Wat gedaan**
+- [src/models/xgb_forecast.py](src/models/xgb_forecast.py) met `train()`, `predict()`, `_cross_validate()`, `evaluate_per_day()`, `evaluate_per_zone_bucket()`, `plot_shap()`, `save_artifact()`.
+- Optuna TPE sampler, 30 trials, search over `max_depth` (3-10), `learning_rate` (0.01-0.3 log), `n_estimators` (100-500), `subsample` (0.5-1), `colsample_bytree` (0.5-1). Objective: leave-one-day-out OOF MAE.
+- Final model retrained op alle data met best params, gepickled in [models/xgb_v1.pkl](models/xgb_v1.pkl) samen met feature-names, params, en CV-results.
+- SHAP `TreeExplainer` op steekproef van 5000 rijen → beeswarm summary plot in [reports/figures/shap_xgb_v1.png](reports/figures/shap_xgb_v1.png).
+- `xgboost`, `optuna`, `shap` toegevoegd aan requirements.
+
+**Resultaten — DoD ✅**
+
+Best CV MAE (Optuna): **0.0608**. Best params: `max_depth=3, lr=0.077, n_estimators=101, subsample=0.95, colsample_bytree=0.68` — kleine boom, beperkt aantal trees. Past bij de schaarse target en de beperkte 3-dagen dataset.
+
+| Held-out dag | n_test | MAE | RMSE |
+|---|---:|---:|---:|
+| 30 apr (weekday) | 21.864 | 0.045 | 0.418 |
+| 1 mei (holiday) | 21.864 | **0.090** | 0.610 |
+| 2 mei (weekend) | 21.864 | 0.048 | 0.389 |
+
+| Zone-bucket | n_zones | total_demand | MAE | RMSE |
+|---|---:|---:|---:|---:|
+| low (laagste 1/3) | 304 | 321 | 0.015 | 0.122 |
+| mid | 303 | 796 | 0.036 | 0.238 |
+| **high (hoogste 1/3)** | **304** | **2.868** | **0.131** | **0.791** |
+
+**Vlot**
+- Pipeline draait end-to-end in ~3 min (30 trials × 3 folds = 90 fits).
+- SHAP plot toont `demand_lag_1` als overheersende feature — autocorrelatie domineert bij 3 dagen training-data, wat zinvol is.
+- Model laadt correct terug via pickle; `predict()` op verse rijen geeft consistente uitvoer.
+
+**Problemen — geen blockers, wel inzichten**
+- **Holiday-dag is de moeilijkste**: MAE 0.090 op 1 mei is 2× zo hoog als op weekday/weekend. Logisch — het volume op die dag is een outlier en bij leave-one-day-out heeft het model die verdeling niet gezien. Bij meer dagen training-data zou dit verbeteren.
+- **High-demand zones zijn het moeilijkste**: MAE 0.131 vs 0.015 voor low-buckets. Dit is naturlijk proportioneel: high-demand zones hebben grotere variantie. Voor evaluatie in business-zin is dit de bucket die telt.
+- **MAE in absolute termen lijkt laag** (0.06) maar dat komt door target-sparsity: 96.6% van rijen heeft demand=0. Voor de high-demand bucket — waar het er echt toe doet — is MAE 0.13. Dat moet in de fiche genuanceerd worden.
+
+**Open punt voor latere modeling-issue**
+- Lag-leakage uit feature-issue (1.6): bij strikte CV-evaluatie zouden lag-features per fold herberekend moeten worden zodat 30 apr's demand niet via lags in 1 mei's train-features doorlekt. Voor deze baseline acceptabel; dien voor productie-evaluatie.
