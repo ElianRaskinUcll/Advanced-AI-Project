@@ -541,3 +541,64 @@ Rolling mean (window=6) klimt van ~165 → ~220 in de eerste 25-30 episodes, dan
 - Q-tabel discretisatie is bewust ruw (12 states); een fijnere binning of function approximation (issue 4.3 DQN?) zou meer marge kunnen geven.
 - Macro `forecast_top` werkt goed dankzij de Transformer-undershoot: het stuurt vans naar de "minder onzekere" zones. Bij betere forecaster zou greedy mogelijk beter worden.
 - Reward = sales-only; volledige MDP-spec reward (`+1·answered + α·revenue − β·distance − γ·unanswered`) van issue 3.2 is niet geïmplementeerd in env. Wanneer dispatching-logica komt (4.x), kan deze full reward ingebouwd worden.
+
+---
+
+## Issue 4.3 — Deep Q-Network agent
+
+**Wat gedaan**
+- [src/agents/dqn.py](src/agents/dqn.py) — `DQNAgent` met:
+  - **Q-network**: 2 hidden layers à 64 units, ReLU. Input = continuous obs (31 dims, znorm normalized), output = 4 Q-values (één per macro).
+  - **Target network** met soft update (volledige load_state_dict elke 200 env-steps).
+  - **Replay buffer**: cyclic deque, capacity 10.000. Warm-up van 500 steps voor eerste batch update.
+  - **Action space**: dezelfde 4 macros als tabular Q (4.2) voor directe vergelijking. DQN krijgt continuous obs → richere state-rep dan de 12 discrete bins.
+  - **Loss**: MSE op TD-target met clipping (max grad-norm 5).
+- Training: 500 episodes (issue noemde ~2000, maar met 4 macros plateau bereikt ruim daarvoor). Adam lr=1e-3, γ=0.95, batch 64, ε=1.0→0.05 lineair over 200 episodes.
+- Per-episode logging naar CSV: [models/dqn_train_log.csv](models/dqn_train_log.csv).
+- Modelartifact in [models/dqn_v1.pt](models/dqn_v1.pt).
+- Reward curve: [reports/figures/dqn_reward.png](reports/figures/dqn_reward.png).
+
+**DoD ✅ — beide criteria gehaald**
+
+| Agent | Test sales (2/5) |
+|---|---:|
+| Random | 56 |
+| Greedy (4.1) | 77 |
+| Q-tabular (4.2) | 140 |
+| **DQN** | **163** (+86 vs greedy, +112%) |
+
+DQN klopt greedy én tabular Q-learning (+16% vs Q). De richere continuous state representation helpt boven de 12-bin discretisatie van 4.2.
+
+**Convergentie zichtbaar**
+
+Rolling mean (window 25) stijgt van ~150 (warm-up + ε hoog) → ~225 (laatste 100 episodes plateau). Loss daalt steadily, eindigt rond mean 17 (op niet-ge-clipte schaal). Training ✓ convergeert.
+
+**Macro-distributie in training**:
+
+| Macro | Picks | % |
+|---|---:|---:|
+| forecast_top | 17.423 | 53% |
+| stay | 8.062 | 24% |
+| random | 4.968 | 15% |
+| greedy | 2.547 | 8% |
+
+Net als bij Q-learning domineert `forecast_top`. Verschil: DQN gebruikt **`stay` veel vaker** (24% vs 21% bij Q-learning) — het continuous state laat hem fijner detecteren wanneer hij in een goede zone staat en niet hoeft weg te bewegen. Dat is precies waar function approximation winst biedt boven harde bins.
+
+**Vlot**
+- Macro-design uit 4.2 hergebruikt → directe apples-to-apples vergelijking tussen tabular Q en DQN, beide trainen op exact dezelfde dates en testen op zelfde test-day.
+- 500 episodes ruim voldoende voor 4-macro action space; de 2000 in de issue-tekst was een ruwe schatting voor diepere problemen.
+- Replay buffer + target network werken zonder issues; convergentie zonder oscillatie.
+
+**Problemen — geen blockers**
+
+- Loss-magnitude ~17 lijkt hoog maar is in TD-target schaal (rewards zijn integer sales, kunnen pieken op 5-10 per step). Niet vergelijkbaar met klassieke MSE op gestandardiseerde features.
+- Geen GPU gebruikt: CPU-training duurde ~12 min voor 500 episodes. Bij grotere action spaces of langer training nodig: GPU-acceleratie of stable-baselines3 (out of scope hier).
+
+**Inzicht voor de fiche (Technical Depth — week 4 stof)**
+
+Tabular Q (12 states × 4 macros = 48 cells) en DQN (continuous 31-dim obs → 64-64-4 net) op dezelfde MDP, dezelfde macros, zelfde training-data. Direct apples-to-apples: DQN haalt 163 sales (+16% over tabular's 140) op test-dag — function approximation levert meetbare winst, zonder de macro-action abstractie te verlaten. Dat is de kerndemonstratie van waarom deep RL boven tabular helpt: dezelfde policy-class, betere generalization door continuous state.
+
+**Open punten voor latere issues**
+- Volledige MDP-spec reward in env (zoals voor 4.2) — DQN traint nu ook op sales-only.
+- DQN met "raw action space" (per-van zone, niet macro) zou écht laten zien wat deep RL kan; vereist andere architectuur (factorized Q of actor-critic). Out of scope hier maar zinvolle volgende issue.
+- Hyperparam tuning (Optuna over LR, gamma, hidden_sizes) niet gedaan — defaults werkten direct goed genoeg voor DoD.
