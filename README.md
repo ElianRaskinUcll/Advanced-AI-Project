@@ -22,6 +22,9 @@ make all
 ## Results
 Figuren en rapporten komen in `reports/figures/`.
 
+## Limitations
+Eerlijke inventaris van wat dit project niet doet (3-dagen-beperking, simulator-aannames, reward-tuning, overfitting-risico) plus mitigaties en future work: zie [docs/limitations.md](docs/limitations.md).
+
 ## Repo structure
 ```
 .

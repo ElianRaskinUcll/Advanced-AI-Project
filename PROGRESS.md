@@ -695,3 +695,62 @@ Q-learning leidt op revenue, % answered én neglected-zones. Greedy is "snelst" 
 - N_SEEDS=5 voor draaitijd; bij definitieve fiche-run kunnen we dit naar 10+ optillen (het script accepteert dat als parameter — nu hardcoded constant, eventueel CLI-vlag toevoegen).
 - Fairness-metric is bewust vereenvoudigd (Gini op service-rate). Een "demand-weighted" variant (zwaardere weging voor hogere-demand zones) zou nuttiger zijn voor stakeholders.
 - "Calls answered" is nog een proxy (= sales). Wanneer dispatching-lifecycle in env bestaat, kan deze metric exacter gedefinieerd worden.
+
+---
+
+## Issue 5.2 — Result visualizations
+
+**Wat gedaan**
+- [notebooks/06_results_viz.ipynb](notebooks/06_results_viz.ipynb) — end-to-end uitvoerbaar. 4 figuren gegenereerd:
+  - [reports/figures/fig1_pct_answered.png](reports/figures/fig1_pct_answered.png) — bar chart van % calls answered per agent met error bars over 5 seeds.
+  - [reports/figures/fig2_coverage_heatmap.png](reports/figures/fig2_coverage_heatmap.png) — heatmap top-20 zones × uur: links actuele demand op 1 mei, rechts Q-agent's van-aanwezigheid (gecumuleerd over 5 seeds). Coverage-check.
+  - [reports/figures/fig3_van_movements.png](reports/figures/fig3_van_movements.png) — twee panelen: (a) lat/lng-trajecten van alle 15 karren op 1 mei, (b) zone-wissels per kar als stripplot.
+  - [reports/figures/fig4_reward_curves.png](reports/figures/fig4_reward_curves.png) — Q-learning training (60 ep) + DQN training (500 ep), met horizontale baselines voor random/greedy/historical (mean test sales uit eval_summary.csv).
+- Consistent kleurenschema per agent (`AGENT_COLORS`) hergebruikt in alle figuren voor visuele samenhang.
+
+**DoD ✅** — vier publication-quality figuren staan in `reports/figures/`. Alle figuren gebruiken consistent kleurenschema, hebben titels/labels/legends, en zijn op 110 DPI gerenderd voor scherp printen.
+
+**Wat de figuren tonen** (klaar voor de fiche)
+
+- **Fig 1**: Q-learning leidt met 30.6% answered rate, gevolgd door DQN (28.1%); historical/greedy gelijk rond 20%; random ondergrens 14.7%. Error bars zijn klein → consistent over seeds.
+- **Fig 2**: De Q-agent dekt grotendeels dezelfde uren (12-19u) en zones (top-20) als waar de werkelijke vraag piekt — bevestigt dat de policy informed beslissingen neemt, niet random.
+- **Fig 3a**: Karren clusteren in een ~30km × 30km gebied rond Bornem. Geen vlucht-uitstapjes naar onnatuurlijk verre regio's.
+- **Fig 3b**: Q-agent's `forecast_top` macro doet elke 10-min step een nieuwe selectie van top-zones — vans bewegen letterlijk elke step. Niet noodzakelijk optimaal (mogelijk teveel travel-cost), maar verklaarbaar gegeven het macro-design.
+- **Fig 4**: Q-learning leert in ~25 episodes naar plateau ~220 sales (factor 3× boven random=70). DQN leert trager maar bereikt zelfde niveau ~episode 200, plateau rond 225. Beide getrainde agents domineren niet-getrainde baselines duidelijk.
+
+**Vlot**
+- Eval-results CSV uit issue 5.1 direct herbruikt voor Fig 1 — geen extra runs nodig voor agent-aggregaten.
+- DQN training-log al beschikbaar in `models/dqn_train_log.csv` — direct in te lezen voor Fig 4.
+- Consistent kleurenschema en `plt.rcParams` global maakt dat alle figuren visueel coherent zijn voor side-by-side gebruik in fiche.
+
+**Problemen — geen blockers**
+- Q-learning's training-history werd niet bewaard in `q_table.pkl`. Oplossing: kort hertraind (60 ep ~60s) in het notebook om de curve te krijgen. Alternative was geweest om q_learning.py te updaten om history op te slaan; dat had bestaande artifact-formaat geraakt. Notebook-retrain is goedkoper.
+- Fig 3b panel toont een dot per kar per step (markers staan elke 10 min) omdat Q-agent's `forecast_top` macro élke step een nieuwe selectie maakt → vans wisselen continu van zone. Inhoudelijk een vondst, niet een viz-bug — explicit geannoteerd als observation in het analysis-stuk.
+
+**Open punten**
+- Animatie ipv stripplot voor Fig 3 zou nóg sterker zijn voor de defense (bv. matplotlib.animation of plotly), maar PNG-output volstaat voor de fiche.
+- Per-zone overlap tussen actual demand en agent presence (Fig 2) zou kunnen kwantificeerd worden als correlatie-coefficient — nu visueel afleesbaar.
+
+---
+
+## Issue 5.3 — Honest limitations analysis
+
+**Wat gedaan**
+- [docs/limitations.md](docs/limitations.md) — vier limitaties met concrete cijfers, gestructureerd als **Wat / Impact / Mitigatie / Future work** per limitatie:
+  1. **3-dagen-dataset** (XGBoost slaat Transformer; LODO-CV is enige zinvolle split; holiday-fold uniek).
+  2. **Simulator-realisme aannames** (10-min step instant transit, geen answered/unanswered lifecycle, 2-ring pooling, `call_fraction` globaal). Issue 3.4 oracle-test bewees dat -48% sales-gap een sampling-bottleneck is, niet forecaster.
+  3. **Reward-tuning gevoeligheid** (full MDP-spec reward `+1·answered + α·revenue − β·distance − γ·unanswered` niet in env; agents trainen op sales-delta proxy).
+  4. **Overfitting-risico** (1 held-out dag, single-seed conclusies binnen seed-noise; multi-seed-evaluatie als mitigatie).
+- Synthese-paragraaf onderaan: drie van de vier limitaties leiden naar "meer data"; de vierde (reward) is implementatie-schuld. Volgorde van marginal value-per-effort: **forecast-fix > reward-fix > meer data > meer simulator-realisme**.
+- README.md uitgebreid met sectie "Limitations" die expliciet linkt naar docs/limitations.md.
+
+**DoD ✅** — `docs/limitations.md` staat in repo, gelinkt vanuit `README.md`. Eén pagina per limitatie ongeveer; in totaal ~190 regels markdown.
+
+**Vlot**
+- Concrete cijfers uit alle eerdere issues hergebruikt (XGBoost MAE 0.090 op holiday, simulator -48% sales, DQN +196% lift met oracle, 5.8× discriminator-ratio, …) → de limitatiesnota leunt op gemeten data, niet op vage claims.
+- "Future work"-secties geven concrete actiepunten (HDBSCAN, log-target Transformer, multi-objective RL, k-fold met 5+ folds) die elk verbinden met een eerder open punt uit PROGRESS.md.
+
+**Problemen — geen.**
+
+**Inzicht voor de fiche (defense voorbereiding)**
+- Synthese-paragraaf positioneert het project: we hebben werk geleverd dat eerlijk is over wat het niet doet, met expliciete prioritering voor toekomstige verbeteringen. Examinatoren krijgen geen verrassingen — alle bekende zwaktes staan op één plek met getallen.
