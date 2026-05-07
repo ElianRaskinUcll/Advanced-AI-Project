@@ -783,3 +783,107 @@ Q-learning leidt op revenue, % answered én neglected-zones. Greedy is "snelst" 
 **Open punten voor volgende issues**
 - Demo-app (Streamlit) als aparte issue (6.2?). Daarna terug naar README om de section toe te voegen.
 - Live-versie op Streamlit Cloud nog niet vermeld in README; als de app komt, volgt deploy als logische follow-up.
+
+---
+
+## Issue 6.2 — Code cleanup & documentation
+
+**Wat gedaan**
+- **Ruff lint**: 8 issues gevonden in `src/`, allemaal opgelost.
+  - 3× `F401` unused imports (h3 in q_learning, numpy in build_features, pickle in transformer_forecast) — auto-fixed.
+  - 4× `E702` semicolon-multiple-statements in metrics.py + transformer_forecast.py — handmatig naar aparte regels.
+  - 1× `F841` unused variable (`im` in transformer's plot_attention) — geschrapt.
+- **Dead code**: `src/env/_debug_replay.py` (debug-script uit issue 3.4) verwijderd. Andere `print(...)` statements zitten allemaal in `__main__` blocks (DoD-reporters), legitiem.
+- **Config**: [pyproject.toml](pyproject.toml) toegevoegd met `[tool.ruff]` (target Py3.12, line-length 110, exclude data/notebooks/etc) en `[tool.pytest.ini_options]` (testpaths, filterwarnings).
+- **Tests**: drie testbestanden toegevoegd in [tests/](tests/) plus `conftest.py` met **torch-before-pandas** import-bootstrap voor de Windows-DLL workaround:
+  - [tests/test_data_load.py](tests/test_data_load.py) — 8 tests: per loader schema/count-checks tegen README-cijfers (sales=2219, calls=1766, etc).
+  - [tests/test_env_step.py](tests/test_env_step.py) — 3 tests: gymnasium env_checker, full rollout (66 steps), action-validation errors.
+  - [tests/test_metrics.py](tests/test_metrics.py) — 6 tests: pure unit-tests op `pct_answered`, `revenue`, `haversine`, `_gini` (perfect equality, perfect inequality, edge cases).
+
+**DoD ✅**
+
+```
+$ python -m ruff check src/
+All checks passed!
+
+$ python -m ruff check tests/
+All checks passed!
+
+$ python -m pytest tests/ -v
+============================= 17 passed in 10.22s =============================
+```
+
+**Vlot**
+- Ruff was al goed gericht door `from __future__ import annotations` overal en docstrings/type-hints uit eerdere issues — slechts 8 issues op ~3000 regels code.
+- Pytest's `conftest.py` regelt zowel het Windows-torch DLL-issue (eenmaal `import torch` vóór alles) als de `sys.path` voor `src.*` imports, in één plek.
+- 17 tests dekken: data-loading (per loader), env-API (gymnasium contract), pure metric-functies — drie verschillende lagen.
+
+**Problemen — geen blockers**
+- Eerste pytest-run faalde omdat `import torch` in test_env_step.py te laat kwam (pandas was via test_data_load al geladen). Opgelost door torch in conftest.py te importeren — geen wijzigingen aan de tests zelf nodig.
+
+**Open punten**
+- E501 `line-too-long` is in `pyproject.toml` genegeerd (line-length 110 ipv standaard 88) — sommige ML config-regels of f-strings zijn intentioneel langer. Strikter naar 88 zou veel cosmetisch werk vereisen voor weinig waarde.
+- Test-coverage is "smoke" niveau — geen unit-tests op de ML-pipeline (Optuna-XGB, Transformer-train) want die zijn slow + side-effect-heavy. Voldoende voor DoD; uitbreiden bij toekomstige refactoring.
+
+---
+
+## Issue 6.3 — Notebook curation
+
+**Wat gedaan**
+- **Hernoemd** volgens issue-spec:
+  - `02_eda.ipynb` → `01_eda.ipynb` (general data exploration)
+  - `03_forecast_comparison.ipynb` → `02_forecast.ipynb`
+  - `04_sim_validation.ipynb` → `03_simulation.ipynb`
+  - `05_agent_comparison.ipynb` → `04_agents.ipynb`
+  - `06_results_viz.ipynb` → `05_results.ipynb`
+- **Verwijderd**: `01_eda_zones.ipynb` (zones-design markdown gemerged in 01_eda als finale sectie). Bewaard: `dataVisualisatie.ipynb` (de oorspronkelijke notebook van de gebruiker, niet aangeraakt).
+- **Intros herschreven** voor alle 5 notebooks: `# Issue X.Y` prefix vervangen door duidelijke nummering (`# 01 — Exploratory Data Analysis` etc), elk met:
+  - **Verhaallijn-banner** bovenaan (`data → forecast → simulation → agents → results`) met clickable links naar de andere notebooks.
+  - **Doel**-paragraaf (1-2 zinnen).
+  - **Wat dit notebook doet** (genummerde lijst).
+  - **Conclusie**-spoiler (zo de lezer weet waar het naartoe gaat).
+- **Outros / next-pointers**: elke notebook eindigt met `---` separator + `**Volgende**: [XX_naam.ipynb](XX_naam.ipynb)` link (behalve 05_results, wat het eindpunt is en terugverwijst naar de hele cycle).
+- **Cross-referenties**: notebooks verwijzen elkaar (bv. 03_simulation linkt naar 01_eda voor stops-detectie context, 04_agents linkt naar 02_forecast voor magnitude-undershoot achtergrond), plus [docs/limitations.md](docs/limitations.md) voor open punten.
+- **Outputs**: huidige run-uitvoer behouden in notebooks/. Issue noemde "cleared outputs voor commit, óf gerunde versies" — gekozen voor gerunde versies (de cijfers vertellen het verhaal direct). Indien voor commit gewenst: `jupyter nbconvert --clear-output --inplace notebooks/*.ipynb` is een one-liner voor de gebruiker.
+
+**DoD ✅** — De 5 notebooks lezen als een verhaal: data → forecast → simulation → agents → results. Elke notebook heeft expliciete intro met doel + spoiler-conclusie, en eindigt met een link naar de volgende. De zones-design en stops-detectie pivot van issue 1.3 zit nu als finale sectie in 01_eda waar het thuishoort (nadat we de data gezien hebben).
+
+**Vlot**
+- Bestaande notebooks hadden al duidelijke intros + conclusies/key-insights — dat was al het zware werk. Renaming + cross-linking + verhaallijn-banner is grotendeels mechanisch.
+- Inhoud niet hergeschreven: het oorspronkelijke verhaal per notebook bleef intact, alleen de framing-laag (intro+outro) is uniform gemaakt.
+
+**Problemen — geen.**
+
+**Open punten**
+- Notebook-outputs wel committen of clearen blijft de gebruiker's keuze. Beide werken (`nbconvert --clear-output` of laat-staan).
+- `dataVisualisatie.ipynb` blijft een ongebruikte oorspronkelijke notebook in `notebooks/`. Niet hernoemd of geschrapt — gebruiker mag beslissen of hij weg kan.
+
+---
+
+## Issue 6.4 — Pre-fiche content dump
+
+**Wat gedaan**
+- [docs/fiche_content.md](docs/fiche_content.md) opgesteld als ruwe input voor de technische fiche. **6 secties** in bullet-list-stijl zodat de inhoud direct overneembaar is in fiche-format:
+  1. **Introduction** — problem statement (60-80% miss-rates per dag-type), motivation, 1-zin chosen approach, repo link placeholder.
+  2. **Data** — Foubert dataset omvang (~697k rijen, 7 tabellen + GPS), preprocessing-stappen (joins, stop-detectie, H3-grid, feature-engineering), challenges (privacy-strip, geen klant-link, vuile zipcode, 3-dagen-bottleneck).
+  3. **Model & Methods** — XGBoost (Optuna params, MAE-degeneratie), Transformer (architectuur, training-config), simulation env (Gymnasium, state/action/reward), Q-learning + DQN (macros, hyperparams), Streamlit-app expliciet als "niet geïmplementeerd".
+  4. **Results & Evaluation** — key tabel uit eval_summary.csv, hero plots (fig1+fig4), 4 key insights gerangschikt, app screenshots N/A.
+  5. **Contributions** — libraries-lijst, papers (DBSCAN, H3, Transformer, DQN, Optuna, SHAP), GenAI-usage rubric (boilerplate, debugging, iteratieve dialoog, documentatie).
+  6. **Challenges & Future Work** — 4 challenges (DBSCAN-pivot, simulator-gap, XGBoost-degeneratie, 3-dagen-bottleneck) met cijfers; future work gerangschikt op marginal value-per-effort.
+
+**DoD ✅** — content dump staat als `docs/fiche_content.md`. Alle cijfers (per-fold MAEs, agent-rankings, eval-metrics, ablation-lifts) komen rechtstreeks uit eerdere PROGRESS-secties zodat ze consistent zijn met wat in de notebooks staat.
+
+**Vlot**
+- Hoofdwerk was synthese — alle cijfers en challenges-narratives bestonden al (eval_summary.csv, limitations.md, PROGRESS.md). De content-dump is een gestructureerde herverpakking.
+- Hyperparameter-overzichtstabel maakt het makkelijk overneembaar in een fiche-tabel zonder dat de gebruiker handmatig moet zoeken.
+- "Future work" gerangschikt op value-per-effort gevolgd uit limitations.md synthese — niet zomaar een laundry list.
+
+**Bewuste `<TODO>` placeholders** waar ik geen user-input heb:
+- Repo URL (sectie 1) — gebruiker vult GitHub-link in.
+- Solo vs partner (sectie 5) — onduidelijk uit context.
+- UCLL-cursus-tutorials (sectie 5) — week 4/5/6 specifieke materialen kent gebruiker beter dan ik.
+- GenAI-usage perspectief (sectie 5) — hoe de gebruiker zelf GenAI inzet en valideert is een persoonlijke reflectie.
+
+Verder geen blockers.
+
+**Open punten — geen.** Project-content is nu compleet voor fiche-redactie.

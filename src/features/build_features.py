@@ -4,7 +4,6 @@ from datetime import date
 from pathlib import Path
 
 import h3
-import numpy as np
 import pandas as pd
 
 from src.data.load import load_calls, load_sales

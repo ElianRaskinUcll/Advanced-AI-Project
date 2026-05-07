@@ -8,7 +8,6 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 
 import math
-import pickle
 from copy import deepcopy
 from pathlib import Path
 
@@ -315,7 +314,8 @@ def plot_loss_curves(histories: list[dict], path: Path) -> None:
         ax.plot(epochs, hist["val_loss"], label="val MSE", color="#ff7f0e")
         ax.plot(epochs, hist["val_mae"], label="val MAE", color="#2ca02c", linestyle="--")
         ax.set_title(f"fold {k}")
-        ax.set_xlabel("epoch"); ax.grid(True, alpha=0.3)
+        ax.set_xlabel("epoch")
+        ax.grid(True, alpha=0.3)
         if k == 0:
             ax.set_ylabel("loss")
         ax.legend(fontsize=8)
@@ -339,7 +339,7 @@ def plot_attention(model: TransformerForecast, X_sample: np.ndarray, path: Path)
         w_np = w[0].numpy()  # (heads, T, T)
         for hi in range(n_heads):
             ax = axes[li][hi]
-            im = ax.imshow(w_np[hi], cmap="viridis", vmin=0, vmax=w_np.max())
+            ax.imshow(w_np[hi], cmap="viridis", vmin=0, vmax=w_np.max())
             ax.set_title(f"L{li+1} H{hi+1}", fontsize=9)
             ax.set_xticks(range(SEQ_LEN), [f"t-{SEQ_LEN-i}" for i in range(SEQ_LEN)], fontsize=7)
             ax.set_yticks(range(SEQ_LEN), [f"t-{SEQ_LEN-i}" for i in range(SEQ_LEN)], fontsize=7)

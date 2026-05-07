@@ -6,7 +6,6 @@ import pickle
 from datetime import date as date_t
 from pathlib import Path
 
-import h3
 import matplotlib
 
 matplotlib.use("Agg")

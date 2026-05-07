@@ -35,8 +35,10 @@ def total_revenue_eur(info: dict) -> float:
 
 
 def _haversine_m(lat1, lng1, lat2, lng2) -> float:
-    p1 = np.radians(lat1); p2 = np.radians(lat2)
-    dl = np.radians(lng2 - lng1); dp = p2 - p1
+    p1 = np.radians(lat1)
+    p2 = np.radians(lat2)
+    dl = np.radians(lng2 - lng1)
+    dp = p2 - p1
     a = np.sin(dp / 2) ** 2 + np.cos(p1) * np.cos(p2) * np.sin(dl / 2) ** 2
     return 2 * EARTH_R * np.arcsin(np.sqrt(a))
 
@@ -65,7 +67,8 @@ def mean_response_min(env: DispatcherEnv, actions_history: list[np.ndarray]) -> 
     """
     times: list[float] = []
     for c in env._sampled_calls:
-        ct = c["time_min"]; cz = c["zone_idx"]
+        ct = c["time_min"]
+        cz = c["zone_idx"]
         for step, action in enumerate(actions_history):
             step_t = DAY_START_HOUR * 60 + step * TIME_STEP_MINUTES
             if step_t < ct:
