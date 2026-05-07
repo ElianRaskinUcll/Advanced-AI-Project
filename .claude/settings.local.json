@@ -34,7 +34,8 @@
       "PowerShell(python -c \"import torch; import pandas; print\\('torch-pandas ok'\\)\")",
       "PowerShell(jupyter nbconvert --to notebook --execute notebooks/03_forecast_comparison.ipynb --output 03_forecast_comparison.ipynb 2>&1)",
       "Bash(python -W error -m src.env.dispatcher_env)",
-      "PowerShell(python -m src.env.dispatcher_env 2>&1)"
+      "PowerShell(python -m src.env.dispatcher_env 2>&1)",
+      "PowerShell(python -c \"from datetime import date; from src.env.dispatcher_env import DispatcherEnv; from src.env.forecast_service import ForecastService; from src.env.replay import replay; f = ForecastService\\(\\); env = DispatcherEnv\\(date=date\\(2026,4,30\\), forecaster=f, seed=42\\); r = replay\\(env, date\\(2026,4,30\\), seed=42\\); print\\(f'30/4 replay: calls={r[chr\\(34\\)+chr\\(110\\)+chr\\(95\\)+chr\\(116\\)+chr\\(111\\)+chr\\(116\\)+chr\\(97\\)+chr\\(108\\)+chr\\(95\\)+chr\\(99\\)+chr\\(97\\)+chr\\(108\\)+chr\\(108\\)+chr\\(115\\)+chr\\(34\\)]} sales={r[chr\\(34\\)+chr\\(110\\)+chr\\(95\\)+chr\\(116\\)+chr\\(111\\)+chr\\(116\\)+chr\\(97\\)+chr\\(108\\)+chr\\(95\\)+chr\\(115\\)+chr\\(97\\)+chr\\(108\\)+chr\\(101\\)+chr\\(115\\)+chr\\(34\\)]}'\\)\" 2>&1)"
     ]
   }
 }

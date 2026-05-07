@@ -399,3 +399,63 @@ Dat is letterlijk een Challenge-sectie voor de fiche: spec vs data-realiteit con
 - Magnitude-undershoot op feestdag/weekend (-20%/-37%) → calibration of log-target retrain (zelfde open punt als 2.4).
 - `call_fraction` is globaal; per-zone of per-uur kan beter zijn (drukkere uren mogelijk meer calls per sale). Niet vandaag.
 - Pending-calls slot in observation (uit MDP-spec) nog niet geïntegreerd → 3.4.
+
+---
+
+## Issue 3.4 — Simulator validation via replay
+
+**DoD-aanpassing (gepauzeerd, gebruiker beslist):** ±20% niet gehaald op sales (-48%); op calls wél (+11%). Beslissing — accepteer eerlijk de limit, ga door zonder hacky calibratie. In lijn met eerdere "Acceptabele ondergrens"-precedent uit issue 1.3.
+
+**Wat gedaan**
+- [src/env/replay.py](src/env/replay.py) — `build_replay_actions(target_date, env, mode)`, `replay()`. Twee modes:
+  - `mode="stops"` (default): voor elke (van, 10-min step), als er slow-velocity GPS in dat venster valt, snap actie naar de H3-centroid van de dominante DBSCAN-stop. Anders: GPS-fallback naar laatste fix.
+  - `mode="gps"`: pure GPS-snapshot per step. Behouden voor diagnostische vergelijking.
+- [src/env/dispatcher_env.py](src/env/dispatcher_env.py) — sales sampling toegevoegd (per-van, Poisson, 2-ring H3 pooling = cel + 18 buren ≈ 750m diameter, fysiek opgevat als "ijswagen-attractieradius"). Calls blijven per-zone (van-onafhankelijk).
+- [src/env/forecast_service.py](src/env/forecast_service.py) — `oracle_forecast_day(date)` toegevoegd: leest ground-truth demand uit features.parquet om simulator-logica los van forecaster-kwaliteit te valideren.
+- [notebooks/04_sim_validation.ipynb](notebooks/04_sim_validation.ipynb) — replay 30/4 (predicted én oracle forecast), random-baseline, hourly plots, expliciete DoD-check + decision rationale.
+
+**Resultaten — eerlijk gedocumenteerd**
+
+| Run | Sim calls | vs hist 363 | Sim sales | vs hist 616 |
+|---|---:|---:|---:|---:|
+| Replay (predicted Transformer) | 386 | +6% | 89 | -86% |
+| **Replay (oracle demand)** | **403** | **+11%** | **323** | **−48%** |
+| Random actions baseline | 358 | -1% | 56 | -91% |
+
+**Replay/random sales-ratio = 323 / 56 = 5.8×.** Dat is het echte signaal: de simulator discrimineert duidelijk tussen "vans op juiste plek" en "willekeurig". Niet absolute reproductie, wel **respons op acties** — wat een RL-agent nodig heeft om te leren.
+
+**Iteraties — afnemend rendement**
+
+Vier achtereenvolgende verfijningen op de sales-sampler:
+
+| Stap | Sim sales | Δ vs vorige |
+|---|---:|---:|
+| GPS replay, per-zone, no pooling | 98 | — |
+| GPS, per-van, 1-ring pooling | 229 | +131 |
+| Stops fallback + per-van + 1-ring | 267 | +38 |
+| Stops fallback + per-van + 2-ring | 323 | +56 |
+
+Na de 2-ring is verdere uitbreiding fysiek niet verdedigbaar (3-ring = 1.3km diameter > "ijswagen-attractieradius").
+
+**Structurele bottlenecks — Challenge-faced framing voor fiche**
+
+Twee compounding data-bottlenecks verklaren waarom -48% niet verdere te dichten valt zonder hacks:
+
+1. **GPS-quantisatie bij H3 res 9 (~150m cellen).** GPS-jitter laat een stilstaande van wiebelen over 2-3 buurcellen. Sales geregistreerd op cel X hebben de van GPS-vaak in cel Y/Z, 50-100m ernaast. Pooling helpt deels maar lost het niet structureel op.
+2. **Sparse stops-detectie (issue 1.3).** Slechts ~50% van sales matched aan een DBSCAN-stop. De andere helft = quick stops met te weinig slow-velocity samples voor clustering. Voor die helft valt replay terug op GPS — met dezelfde quantisatie.
+
+Beide compounden multiplicatief. Oracle-replay (perfecte demand) bevestigt dat dit een **sampling-bottleneck** is, niet een forecaster-bottleneck — zelfs met de echte 30/4-demand verliezen we 47% van sales aan deze twee oorzaken.
+
+**Vlot**
+- Pauze-en-rapporteer voor user-decision werkte goed (precedent uit issue 1.3 over DBSCAN-parameters): drie iteraties met cijfers gepresenteerd, gebruiker koos optie A (eerlijk accepteren) ipv calibratie-scale.
+- Calls-pijler helemaal stabiel: +11% op replay, -1% op random — Poisson-process op forecast met `call_fraction` doet zijn werk.
+
+**Open punten — concreet voor latere issues**
+
+- HDBSCAN of variable-density stops-detectie → coverage van ~50% naar 70-80%.
+- H3 res 8 cellen (~500m): van-jitter binnen één cel; vereist herbouw features.parquet + Transformer-hertraining.
+- DoD ±20% formeel terugzetten naar ±50% in een issue-update (analoog aan 1.3's 60% ondergrens).
+- Forecaster magnitude-fix uit 2.4 helpt **niet** voor deze DoD: oracle-test toont dat sampling, niet forecast, de bottleneck is.
+
+**Inzicht voor de fiche (Challenges-faced)**
+> "Sim-validation showed +11% on calls but -48% on sales vs historical. Diagnosis: GPS-quantization (H3 res 9 = 150m cells, vans wiggle across boundaries) compounds with sparse DBSCAN stops-detection (50% of sales unmatched). Iterated four sampler refinements (per-zone → per-van → stops-fallback → 2-ring pooling); each gave diminishing returns until further widening became physically indefensible. Refused to apply a calibration scale that would hit DoD without addressing the bottleneck. Replay/random sales-ratio of 5.8× confirms the simulator discriminates correctly between informed and random action policies, which is what downstream RL needs."
