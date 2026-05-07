@@ -459,3 +459,34 @@ Beide compounden multiplicatief. Oracle-replay (perfecte demand) bevestigt dat d
 
 **Inzicht voor de fiche (Challenges-faced)**
 > "Sim-validation showed +11% on calls but -48% on sales vs historical. Diagnosis: GPS-quantization (H3 res 9 = 150m cells, vans wiggle across boundaries) compounds with sparse DBSCAN stops-detection (50% of sales unmatched). Iterated four sampler refinements (per-zone → per-van → stops-fallback → 2-ring pooling); each gave diminishing returns until further widening became physically indefensible. Refused to apply a calibration scale that would hit DoD without addressing the bottleneck. Replay/random sales-ratio of 5.8× confirms the simulator discriminates correctly between informed and random action policies, which is what downstream RL needs."
+
+---
+
+## Issue 4.1 — Random / greedy / historical baselines
+
+**Wat gedaan**
+- [src/agents/random_agent.py](src/agents/random_agent.py) — `RandomAgent`: `action_space.sample()` per step.
+- [src/agents/greedy_agent.py](src/agents/greedy_agent.py) — `GreedyAgent`: voor elke open call (≤30 min oud) wordt de dichtstbijzijnde vrije van toegewezen via greedy minimum-distance-matching op H3-centroid haversine. Vans zonder toegewezen call blijven in hun huidige zone.
+- [src/agents/historical_agent.py](src/agents/historical_agent.py) — `HistoricalAgent`: hergebruikt `build_replay_actions(target_date, env, mode="stops")` uit issue 3.4 om de echte trajecten te emiteren step-voor-step.
+- [src/agents/run_baselines.py](src/agents/run_baselines.py) — DoD-runner die alle 3 baselines op 30/4 draait, één gedeelde `ForecastService` voor efficiency.
+
+**DoD ✅** — `python -m src.agents.run_baselines`:
+
+| Agent | Steps | Calls | Sales |
+|---|---:|---:|---:|
+| random | 66 | 358 | 56 |
+| **greedy** | **66** | **345** | **95** |
+| historical | 66 | 386 | 89 |
+
+Alle 3 lopen zonder crash door de hele dag. Greedy outperformt random met factor **1.7×** op sales (56 → 95) — bevestigt dat de baseline-logica waarde toevoegt boven willekeur. Historical zit dichtbij greedy (89 vs 95) — verwacht aangezien echte trajecten ook in transit-time zitten.
+
+**Vlot**
+- Hergebruik van `build_replay_actions` uit issue 3.4 maakte HistoricalAgent triviaal (~30 regels).
+- Vectorized greedy-matching via numpy haversine; geen for-loops over (van, call) pairs.
+- Elke agent heeft eigen `__main__` voor zelf-test, plus de unified `run_baselines.py` voor DoD.
+
+**Problemen — geen.**
+
+**Open punten voor latere issues**
+- Calls hebben nu nog geen "answered" lifecycle in env: greedy assigned een van naar zone X, maar de env weet niet of die call effectief beantwoord is. Issue 4.2+ bouwt dispatching-logica.
+- HistoricalAgent reset is niet idempotent met betrekking tot `_actions` — bij meerdere `reset()` calls wordt de actie-stream één keer opgebouwd en daarna teruggespoeld via `_step=0`. OK voor DoD; bij multi-day evaluatie moet `target_date` mogelijk tussen resets veranderen.
