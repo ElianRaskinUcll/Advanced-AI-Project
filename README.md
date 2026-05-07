@@ -1,45 +1,134 @@
-# Advanced-AI-Project
+# Advanced-AI-Project — Foubert IJs dispatcher
 
 ## Project overview
-We gaan ijsverkoop optimaliseren door middel van een LLM te gebruiken om met data zoals drukte, evenementen, ... de beste route doorheen de stad te voorspellen + wat onze voorraden moeten zijn.
+
+End-to-end systeem dat ijswagen-dispatching optimaliseert voor [Foubert IJs](https://www.foubert.eu): een **demand forecaster** voorspelt vraag per (zone, uur), een **Gym-compatibele simulator** speelt een hele dag af, en **RL-agents** leren waar elke kar best naartoe rijdt. Vergelijkt vijf agents (random, greedy, historical replay, tabular Q-learning, DQN) op een 3-dagen export van GPS, sales en calls. Inhoudelijke focus: eerlijke evaluatie boven cijfer-maximalisatie — zie [docs/limitations.md](docs/limitations.md) voor wat het systeem niet doet en waarom.
 
 ## Setup
+
+**Python 3.12** (getest), Windows of Linux.
+
 ```bash
 git clone <repo-url>
 cd Advanced-AI-Project
 pip install -r requirements.txt
 ```
 
-## Data
-Ruwe data staat in `data/raw/`, verwerkte data in `data/processed/`.
+**Windows-specifiek**: `torch` import moet vóór `pandas` gebeuren omwille van een vendored-MKL-conflict bij sommige installaties. Alle modules in deze repo importeren torch als eerste regel; voor eigen scripts hou dezelfde volgorde aan. Daarnaast: train- en eval-commando's die torch gebruiken (Transformer, DQN, evaluation script) draaien betrouwbaarder via **PowerShell** dan via Git Bash door verschillen in DLL-search-paths.
 
-## Usage
-```bash
-make all
-# of: bash scripts/run_all.sh
+```powershell
+# in PowerShell:
+python -m src.models.transformer_forecast
 ```
 
-## Results
-Figuren en rapporten komen in `reports/figures/`.
+## Data
 
-## Limitations
-Eerlijke inventaris van wat dit project niet doet (3-dagen-beperking, simulator-aannames, reward-tuning, overfitting-risico) plus mitigaties en future work: zie [docs/limitations.md](docs/limitations.md).
+De ruwe data staat **al in de repo** onder `data/raw/foubertai_export/` (bewuste keuze, zie issue 11 in PROGRESS.md). Dat is een export van Foubert IJs productiedatabase, 3 dagen — 30 april (donderdag), 1 mei (vrijdag, Dag van de Arbeid) en 2 mei 2026 (zaterdag) — met:
+
+- 7 tabellen per dag: shifts, sales, sale_orders, menu_items, reservations, calls, vans
+- GPS-tracking per kar (~5s sampling)
+
+In totaal ~697k rijen. Voor schema en datamodel-uitleg zie `data/raw/foubertai_export/2026-05-02_README_full.md`.
+
+Verwerkte tussenresultaten komen in `data/processed/` (events, stops, zones, context, features). Modellen in `models/`. Eval-output in `results/`. Figuren in `reports/figures/`.
+
+## Usage
+
+De pipeline heeft een natuurlijke volgorde van data → forecast → simulator → agents → eval. Elk module-script kan los gerund worden.
+
+### 1. Data + features prepareren
+
+```bash
+python -m src.data.load            # data/processed/events.parquet
+python -m src.zones                # data/processed/stops.parquet + zones.geojson
+python -m src.context              # data/processed/context.parquet  (Open-Meteo API call)
+python -m src.features.build_features  # data/processed/features.parquet
+```
+
+### 2. Forecaster trainen
+
+```powershell
+python -m src.models.xgb_forecast        # models/xgb_v1.pkl  (Optuna, ~3 min)
+python -m src.models.transformer_forecast # models/transformer_v1.pt (~3 min CPU)
+```
+
+### 3. Agents trainen
+
+```powershell
+python -m src.agents.q_learning   # models/q_table.pkl   (~3 min)
+python -m src.agents.dqn           # models/dqn_v1.pt    (~12 min CPU)
+```
+
+### 4. Evaluatie
+
+```powershell
+python scripts/run_evaluation.py   # results/eval_summary.csv (5 agents x 3 dagen x 5 seeds, ~2 min)
+```
+
+Notebooks voor exploratie en analyse staan in `notebooks/` (EDA, sim-validatie, agent-comparison, result-viz, …) en kunnen via `jupyter nbconvert --to notebook --execute notebooks/<naam>.ipynb` end-to-end uitgevoerd worden.
+
+## Results
+
+**Agent ranking** ([results/eval_summary.csv](results/eval_summary.csv), mean over 3 dagen × 5 seeds):
+
+| Agent | % calls answered | Revenue (€) | Distance (km) | Response (min) | Neglected zones |
+|---|---:|---:|---:|---:|---:|
+| **q_learning** | **30.6** | **2.765** | 1.947 | 57 | **1.9 %** |
+| dqn | 28.1 | 2.603 | 3.703 | 78 | 3.6 % |
+| historical (echte trajecten) | 20.4 | 1.659 | 4.766 | 122 | 9.0 % |
+| greedy (nearest free van) | 19.5 | 1.575 | **1.121** | **22** | 2.3 % |
+| random | 14.7 | 1.085 | 12.677 | 149 | 22.1 % |
+
+Tabular Q-learning leidt op revenue, % answered én neglected-zones; greedy is sneller in response-time maar haalt minder totale revenue (chase-vs-pool trade-off). Detail-analyse in [notebooks/05_agent_comparison.ipynb](notebooks/05_agent_comparison.ipynb).
+
+**Forecast vs. agent contributie**: een ablation toonde dat DQN met **oracle ground-truth forecast** ~3× zoveel sales realiseert als met de geleerde Transformer — forecast-kwaliteit is de dominante hefboom, niet agent-architectuur.
+
+### Hero figures
+
+![% calls answered per agent](reports/figures/fig1_pct_answered.png)
+
+![Reward curves tijdens training (Q-learning + DQN) met baseline-lijnen voor random/greedy/historical](reports/figures/fig4_reward_curves.png)
 
 ## Repo structure
+
 ```
 .
 ├── data/
-│   ├── raw/         # ruwe data
-│   └── processed/   # verwerkte data
-├── notebooks/       # exploratie en analyse
-├── src/             # herbruikbare code
-├── models/          # getrainde modellen
-├── reports/
-│   └── figures/     # figuren voor rapport
-├── tests/           # unit tests
-├── scripts/         # entrypoints
-├── Makefile
+│   ├── raw/foubertai_export/   # 3-dagen productie-export (in git)
+│   └── processed/              # afgeleide parquet/geojson
+├── notebooks/                  # 01_eda_zones, 02_eda, 03_forecast_comparison,
+│                               # 04_sim_validation, 05_agent_comparison, 06_results_viz
+├── src/
+│   ├── data/load.py            # 7 tabellen + GPS, build master events
+│   ├── zones.py                # DBSCAN stops + H3 zones
+│   ├── context.py              # Open-Meteo weer + Belgische feestdagen
+│   ├── features/build_features.py  # 65k rijen × 17 features met lag/rolling
+│   ├── models/
+│   │   ├── xgb_forecast.py     # Optuna-getunede XGBoost + SHAP
+│   │   └── transformer_forecast.py # 2-layer Transformer met attention export
+│   ├── env/
+│   │   ├── dispatcher_env.py   # Gymnasium env, 911 zones × 15 vans
+│   │   ├── forecast_service.py # Transformer als black-box service
+│   │   └── replay.py           # GPS/stops-based action builder
+│   ├── agents/
+│   │   ├── random_agent.py / greedy_agent.py / historical_agent.py
+│   │   ├── q_learning.py       # tabular Q over 4 macro-options
+│   │   └── dqn.py              # PyTorch Q-net + target net + replay
+│   └── eval/metrics.py         # 6 metric-functies + evaluate_episode wrapper
+├── scripts/run_evaluation.py   # one-command evaluation pipeline
+├── models/                     # gepickled artifacts (xgb, transformer, q_table, dqn)
+├── reports/figures/            # alle gegenereerde plots
+├── results/eval_summary.csv    # agent x dag x seed evaluation
+├── docs/
+│   ├── mdp_spec.md             # state/action/reward design (issue 3.2)
+│   └── limitations.md          # honest limitations + future work
+├── PROGRESS.md                 # per-issue progress log
 ├── requirements.txt
+├── Makefile                    # install / all / clean targets
 ├── LICENSE
 └── README.md
 ```
+
+## Limitations
+
+Eerlijke inventaris van wat dit project niet doet (3-dagen-beperking, simulator-aannames, reward-tuning, overfitting-risico) inclusief mitigaties en concrete future work: zie [docs/limitations.md](docs/limitations.md). Synthese: forecast-kwaliteit is de grootste hefboom voor verdere verbetering, niet agent-architectuur.

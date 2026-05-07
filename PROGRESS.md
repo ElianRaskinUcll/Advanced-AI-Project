@@ -754,3 +754,32 @@ Q-learning leidt op revenue, % answered én neglected-zones. Greedy is "snelst" 
 
 **Inzicht voor de fiche (defense voorbereiding)**
 - Synthese-paragraaf positioneert het project: we hebben werk geleverd dat eerlijk is over wat het niet doet, met expliciete prioritering voor toekomstige verbeteringen. Examinatoren krijgen geen verrassingen — alle bekende zwaktes staan op één plek met getallen.
+
+---
+
+## Issue 6.1 — README finalization
+
+**DoD-aanpassing (gebruiker bevestigd):** Demo-app sectie geskipt, omdat de Streamlit-app nog niet bestaat (geen `app/` map, `streamlit` niet in requirements). Drie opties voorgelegd; gebruiker koos **C** = pure README-finalization, demo-app voor latere issue. Dat houdt strikte scope én wordt het bouwen van een hele Streamlit-app niet stilletjes onder "README finalization" geschoven.
+
+**Wat gedaan**
+- [README.md](README.md) volledig herschreven met de 7 vereiste secties (van de 9 in de issue, minus de twee demo-app gerelateerde):
+  - **Project overview** (4 zinnen): wat het systeem doet, op welke data, focus op eerlijke evaluatie.
+  - **Setup**: Python 3.12, `pip install -r requirements.txt`, plus expliciete Windows-gotcha (torch vóór pandas, PowerShell ipv Git Bash voor torch-modules).
+  - **Data**: ruwe data is in repo onder `data/raw/foubertai_export/`, beschrijving van wat erin zit (~697k rijen, 7 tabellen + GPS), pointer naar `2026-05-02_README_full.md` voor schema.
+  - **Usage**: 4-staps pipeline (data prep → forecaster training → agents training → evaluation), elk commando expliciet, met geschatte runtime per stap (~3 min XGBoost, ~12 min DQN, etc.).
+  - **Results**: agent-ranking-tabel uit `results/eval_summary.csv` (mean over 3 dagen × 5 seeds), key-insight over forecast als dominante hefboom.
+  - **Hero figures**: `fig1_pct_answered.png` en `fig4_reward_curves.png` inline geëmbed.
+  - **Repo structure**: complete tree met korte one-liners per submodule.
+  - **Limitations link**: pointer naar `docs/limitations.md`.
+
+**DoD ✅** — Een derde persoon kan het project nu vanaf nul runnen: clone → `pip install -r requirements.txt` → de Usage-sectie volgen → resultaten reproduceren. Setup-gotchas (Windows DLL) staan expliciet vermeld zodat ze niet als verrassing komen.
+
+**Vlot**
+- Alle nodige cijfers waren al beschikbaar in `results/eval_summary.csv` en `reports/figures/` van eerdere issues — README is letterlijk een synthese, geen nieuwe runs nodig.
+- Repo-structure tree is daadwerkelijk consistent met de bestaande `ls` (geen ghost-files); elke subdir heeft een duidelijke verantwoordelijkheid.
+
+**Problemen — geen.** Strict-scope-vraag (demo-app) opgelost via expliciete user-decision (precedent: issue 1.3 + 3.4 + 4.4 — pause-en-vraag ipv stilletjes scopen).
+
+**Open punten voor volgende issues**
+- Demo-app (Streamlit) als aparte issue (6.2?). Daarna terug naar README om de section toe te voegen.
+- Live-versie op Streamlit Cloud nog niet vermeld in README; als de app komt, volgt deploy als logische follow-up.
