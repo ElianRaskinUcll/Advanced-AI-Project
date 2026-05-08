@@ -27,9 +27,17 @@ inject_css()
 params = render_sidebar()
 
 st.title("🍦 Foubert IJs — Dispatcher Demo")
-st.write(
-    "Interactieve verkenning van demand-forecasts en dispatch-strategieën, "
-    "gebouwd op de 3-dagen Foubert-export (30 apr — 2 mei 2026)."
+st.markdown(
+    "**Waar moet elke ijswagen op deze dag naartoe rijden?** "
+    "Demand-forecast + RL-dispatcher, getraind op een 3-dagen-export "
+    "(30 apr — 2 mei 2026) van [Foubert IJs](https://www.foubert.eu)."
+)
+
+st.info(
+    "💡 Stel rechts een **dag-type, weer en aantal karren** in — die parameters "
+    "worden gedeeld door alle drie de tabs. Tip: druk op **R** in een tab om hem "
+    "te re-runnen na een sidebar-wissel.",
+    icon="🧭",
 )
 
 st.divider()
@@ -59,9 +67,17 @@ with right:
     st.page_link("pages/3_Comparison.py", label="Open comparison", icon="📊")
 
 st.divider()
-st.caption(
-    f"Huidige sidebar-parameters → dag: **{params['dag_type']}** · "
-    f"temperatuur: **{params['temperatuur']}°C** · "
-    f"neerslag: **{'aan' if params['neerslag'] else 'uit'}** · "
-    f"karren: **{params['n_karren']}**"
-)
+foot_l, foot_r = st.columns([3, 2])
+with foot_l:
+    st.caption(
+        f"Huidige sidebar-parameters → dag: **{params['dag_type']}** · "
+        f"temperatuur: **{params['temperatuur']}°C** · "
+        f"neerslag: **{'aan' if params['neerslag'] else 'uit'}** · "
+        f"karren: **{params['n_karren']}**"
+    )
+with foot_r:
+    st.caption(
+        "ℹ️ [About](/About) · "
+        "💻 [GitHub](https://github.com/RalphBogaertUCLL/Advanced-AI-Project) · "
+        "📚 [Limitations](https://github.com/RalphBogaertUCLL/Advanced-AI-Project/blob/main/docs/limitations.md)"
+    )

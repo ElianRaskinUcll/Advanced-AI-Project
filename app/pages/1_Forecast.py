@@ -24,7 +24,7 @@ import pandas as pd
 import pydeck as pdk
 import streamlit as st
 
-from app.sidebar import inject_css, render_sidebar
+from app.sidebar import inject_css, render_sidebar, require_files
 from src.models.transformer_forecast import (
     MODEL_PATH as TX_PATH,
     TIMESTEP_FEATURES,
@@ -39,6 +39,7 @@ from src.models.xgb_forecast import (
 st.set_page_config(page_title="Forecast — Foubert", page_icon="📈", layout="wide")
 inject_css()
 params = render_sidebar()
+require_files("models/xgb_v1.pkl", "models/transformer_v1.pt", "data/processed/features.parquet")
 
 DAG_TYPE_TO_FOLD = {"werkdag": 0, "feestdag": 1, "weekend": 2}
 DAG_TYPE_TO_DAYTYPE = {"werkdag": "weekday", "feestdag": "holiday", "weekend": "weekend"}
