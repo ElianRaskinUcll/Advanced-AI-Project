@@ -918,3 +918,43 @@ Verder geen blockers.
 - 7.3: Dispatch-page met animated map — gebruik `replay.py` of een live-step simulator-loop met `st.empty()` placeholder voor frame-updates.
 - 7.4: Comparison-page — herhaal `eval_summary.csv` als interactieve tabel + scatter (distance vs answered_calls).
 - Streamlit Cloud deployment (issue 7.5?) — `streamlit_app.py` is al de standaard entrypoint, dus deploy via `streamlit.io/cloud` zou direct werken na repo-push, mits `data/raw/foubertai_export/` mee gaat.
+
+---
+
+## Issue 7.2 — Forecast tab
+
+**Wat gedaan**
+- [app/pages/1_Forecast.py](app/pages/1_Forecast.py) volledig ingevuld met:
+  - **Model-loading** via `@st.cache_resource`: XGBoost (`pickle.load`) + Transformer (state_dict + scaler params) + features.parquet + sequences via `_build_sequences_with_meta`. Eenmalig per session, gedeeld tussen reruns.
+  - **Prediction-functies** via `@st.cache_data` met `(dag_type, temperature, neerslag)` als cache-key:
+    - `predict_xgb`: filtert features.parquet op fold (dag-type), overschrijft temperature/precipitation/day_type, roept `_prepare_xy` + `xgb.predict`. Negatieven geclipt op 0.
+    - `predict_transformer`: kopieert pre-built sequences voor de fold, overschrijft kolommen 1 (temp), 2 (precip), 7-9 (day_type one-hot) over alle 6 timesteps per sequence, scaled met opgeslagen `scaler_mean/scale`, batch-forward in chunks van 2048.
+    - `predict_naive`: gebruikt `demand_lag_1` direct.
+  - **Map**: `pdk.Layer("H3HexagonLayer", get_hexagon="h3_cell", pickable=True)` met per-rij gekleurde fill (zalmrood-gradient via genormaliseerde demand). Tooltip toont `Zone: {h3_cell}\nVoorspelde demand: {pred_str}`.
+  - **Tijd-slider**: 8-22u UTC, filter op `df["hour"] == h` na cache-hit (instant, geen recompute).
+  - **Model-toggle**: radio met XGBoost / Transformer / Naïef / Vergelijking. Vergelijking-modus toont twee maps side-by-side via `st.columns(2)` met **gemeenschappelijke vmax** zodat kleurschalen vergelijkbaar zijn.
+  - **Zone-curve**: Pydeck heeft geen native click-event in Streamlit; vervangen door `st.selectbox` met top-30 zones gerangschikt op piek-demand. Lijngrafiek toont uur-curve voor de gekozen zone (bij Vergelijking: XGBoost én Transformer in één plot).
+  - **Metrics-strip** boven de map: Σ demand bij gekozen uur, aantal actieve zones (>0.05), hoogste cel-waarde.
+
+**DoD ✅ — performance metingen via smoke-test op de prediction-paths**:
+
+| Step | Tijd |
+|---|---:|
+| First-run sequence build (cached daarna) | 1.20 s |
+| `predict_xgb` op 21.864 rijen | **0.03 s** |
+| `predict_transformer` op 21.864 sequences (single-batch) | **0.30 s** |
+
+Param-wissel in sidebar triggers cache-miss → herberekening: XGBoost <100ms, Transformer ~300ms. Slider-wissel = cache-hit + filter, instant. Beide modellen tegelijk toonbaar via "Vergelijking"-modus. Ruim binnen de 2-seconden DoD.
+
+**Vlot**
+- `st.cache_data` op (dag_type, temperature, neerslag) tuple werkt direct — temperature in 1°C-stappen geeft max 31 cache-entries, ruimschoots beheersbaar.
+- Pre-built sequences hergebruikt uit `_build_sequences_with_meta`: alleen kolommen-overschrijven + scalen + forward, geen rebuild.
+- Vergelijkings-modus deelt vmax tussen beide kaarten zodat XGBoost's vlakke voorspelling visueel kontrasteert met Transformer's piek-vorm — dat is **didactisch nuttig** voor de defense (toont de XGBoost-MAE-degeneratie van issue 2.4 in beeld).
+
+**Problemen — geen blockers, één UX-trade-off**
+- Pydeck H3HexagonLayer biedt **geen native click-event** in Streamlit (hover/tooltip wel). Issue vroeg "klikken op zone in kaart selecteert hem"; vervangen door `st.selectbox` met top-30 zones. Tooltip dekt de "wat is de waarde hier"-use-case op de kaart zelf; selectbox dekt de "kies een zone voor de uur-curve"-use-case onder de kaart. Documenteerd als trade-off; alternatief zou `streamlit-folium` zijn maar trager met 911 polygonen.
+
+**Open punten voor latere issues**
+- 7.3: Dispatch-page — animated map met `st.empty()` placeholder voor frame-updates.
+- 7.4: Comparison-page — interactieve tabel + bar charts uit `eval_summary.csv`.
+- Click-on-zone (echte event-handling) zou via `streamlit-deckgl` of een custom-component kunnen, maar dat is een grotere stap dan deze issue rechtvaardigt.
