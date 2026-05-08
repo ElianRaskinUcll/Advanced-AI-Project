@@ -887,3 +887,34 @@ $ python -m pytest tests/ -v
 Verder geen blockers.
 
 **Open punten — geen.** Project-content is nu compleet voor fiche-redactie.
+
+---
+
+## Issue 7.1 — Streamlit app skeleton & navigatie
+
+**Wat gedaan**
+- `streamlit` toegevoegd aan [requirements.txt](requirements.txt).
+- [app/streamlit_app.py](app/streamlit_app.py) als entrypoint: zet `st.set_page_config`, injecteert custom CSS, rendert sidebar, toont een welkomscherm met 3 cards die linken naar de pages via `st.page_link`.
+- [app/sidebar.py](app/sidebar.py) als gedeelde component: `render_sidebar()` met de 4 globale parameters (dag-type selectbox, temperatuur slider 5-35°C, neerslag toggle, aantal karren slider 1-15), defaults via `_ensure_defaults()`, sync naar `st.session_state` zodat parameters meegaan tussen page-switches. Plus `inject_css()` met Foubert-zalmrood (#e8743c) accent op sidebar-titel + buttons + metric-values.
+- Drie page-stubs in [app/pages/](app/pages/):
+  - `1_Forecast.py` (📈) — placeholder voor issue 7.2 (heatmap zones × uur, XGBoost vs Transformer toggle).
+  - `2_Dispatch.py` (🚐) — placeholder voor issue 7.3 (animated map, agent-dropdown, live counters).
+  - `3_Comparison.py` (📊) — placeholder voor issue 7.4 (agent-tabel, bar charts, scatterplot).
+  - Elke page: zet eigen page_config, roept `inject_css()` + `render_sidebar()` aan, toont `st.info` skeleton-banner + `st.json(params)` zodat je ziet welke sidebar-state binnenkomt.
+- README "Demo app" sectie toegevoegd (de placeholder uit issue 6.1 is nu reëel) met start-commando én PowerShell-fallback (`python -m streamlit run ...`). Repo-structure tree bijgewerkt om `app/` op te nemen.
+
+**DoD ✅** — `streamlit run app/streamlit_app.py` start de app op poort 8501. Smoke-test op poort 8765 toonde HTTP 200 op alle 4 routes (`/`, `/1_Forecast`, `/2_Dispatch`, `/3_Comparison`). Navigatie via Streamlit's auto-discovered sidebar werkt, en de globale parameters blijven bewaard tussen tabs (geverifieerd: `st.session_state` wordt door `_ensure_defaults()` geïnitialiseerd op de eerste load en door elke `render_sidebar()`-call gerefresht maar niet gereset).
+
+**Vlot**
+- Streamlit's auto-discovery van `pages/` bespaart een handgeschreven router; bestandsnamen `1_…` / `2_…` / `3_…` zorgen voor de juiste volgorde in de nav.
+- `sys.path.insert(0, _ROOT)` in elke entry-file geeft direct toegang tot `src.*` zonder packaging-boilerplate.
+- `app/sidebar.py` als één bron voor zowel widgets als CSS scheelt code-duplicatie en houdt 1 plek waar de Foubert-styling leeft.
+
+**Problemen**
+- Eerste smoke-test faalde met `streamlit: command not found` omdat we via `pip install --user` werkten en de Scripts-dir niet op PATH staat. Gedocumenteerd in README met `python -m streamlit` als alternatief; `streamlit run` werkt zodra de gebruiker zijn user-Scripts dir aan PATH toevoegt.
+
+**Open punten voor volgende issues**
+- 7.2: Forecast-page invullen — laad `models/transformer_v1.pt` + `models/xgb_v1.pkl`, toon heatmap per (zone, uur) met side-by-side toggle.
+- 7.3: Dispatch-page met animated map — gebruik `replay.py` of een live-step simulator-loop met `st.empty()` placeholder voor frame-updates.
+- 7.4: Comparison-page — herhaal `eval_summary.csv` als interactieve tabel + scatter (distance vs answered_calls).
+- Streamlit Cloud deployment (issue 7.5?) — `streamlit_app.py` is al de standaard entrypoint, dus deploy via `streamlit.io/cloud` zou direct werken na repo-push, mits `data/raw/foubertai_export/` mee gaat.

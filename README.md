@@ -96,8 +96,12 @@ Tabular Q-learning leidt op revenue, % answered én neglected-zones; greedy is s
 ├── data/
 │   ├── raw/foubertai_export/   # 3-dagen productie-export (in git)
 │   └── processed/              # afgeleide parquet/geojson
-├── notebooks/                  # 01_eda_zones, 02_eda, 03_forecast_comparison,
-│                               # 04_sim_validation, 05_agent_comparison, 06_results_viz
+├── notebooks/                  # 01_eda, 02_forecast, 03_simulation,
+│                               # 04_agents, 05_results
+├── app/                        # Streamlit demo app
+│   ├── streamlit_app.py        # entrypoint
+│   ├── sidebar.py              # gedeelde sidebar + Foubert-CSS
+│   └── pages/                  # 1_Forecast, 2_Dispatch, 3_Comparison
 ├── src/
 │   ├── data/load.py            # 7 tabellen + GPS, build master events
 │   ├── zones.py                # DBSCAN stops + H3 zones
@@ -128,6 +132,18 @@ Tabular Q-learning leidt op revenue, % answered én neglected-zones; greedy is s
 ├── LICENSE
 └── README.md
 ```
+
+## Demo app
+
+Interactieve Streamlit-app met drie tabs (Forecast / Dispatch / Comparison) en een gedeelde sidebar voor globale parameters (dag-type, temperatuur, neerslag, aantal beschikbare karren).
+
+```bash
+streamlit run app/streamlit_app.py
+# of als streamlit niet op je PATH staat:
+python -m streamlit run app/streamlit_app.py
+```
+
+De app opent op `http://localhost:8501`. De sidebar-parameters blijven bewaard tussen de tabs via `st.session_state`. Issue 7.1 levert de skeleton; pages worden gevuld in issues 7.2 (forecast-viz), 7.3 (dispatch-animatie) en 7.4 (agent-comparison).
 
 ## Limitations
 
