@@ -1,11 +1,41 @@
 {
   "permissions": {
     "allow": [
-      "PowerShell(Get-ChildItem -Force | Where-Object { $_.Name -ne '.git' } | Select-Object Mode, Name)",
-      "PowerShell(Get-ChildItem -Force | Where-Object { $_.Name -ne '.git' } | Format-Table Mode, Name -AutoSize | Out-String)",
-      "PowerShell(tar -xzOf data/foubertai_export_3dagen.tar.gz foubertai_export/README.md 2>$null)",
-      "Bash(git ls-tree *)",
-      "Bash(xargs wc -l)"
+      "Bash(git check-ignore *)",
+      "Bash(git mv *)",
+      "Bash(git rm *)",
+      "Bash(git add *)",
+      "Bash(make -n all)",
+      "Bash(pip install *)",
+      "Bash(xargs wc -l)",
+      "Bash(awk '{print $1}')",
+      "Bash(python -W error -m src.data.load)",
+      "Bash(awk 'NR==913 || NR==912 || NR==914 {print NR\": \"$0}' data/raw/foubertai_export/2026-04-30/07_calls.tsv data/raw/foubertai_export/2026-05-01/07_calls.tsv data/raw/foubertai_export/2026-05-02/07_calls.tsv)",
+      "Bash(python -c ' *)",
+      "Bash(python -W error -c ' *)",
+      "Bash(python -W error -m src.zones)",
+      "Bash(cat /tmp/c--Users-ralph-Documents-UCLL-B2S2-Advanced-AI-Advanced-AI-Project/9e890c22-a857-4dda-a442-b30d4af3dd67/tasks/bnso3b9k0.output 2>/dev/null || cat \"C:/Users/ralph/AppData/Local/Temp/claude/c--Users-ralph-Documents-UCLL-B2S2-Advanced-AI-Advanced-AI-Project/9e890c22-a857-4dda-a442-b30d4af3dd67/tasks/bnso3b9k0.output\" 2>&1 | tail -20)",
+      "Read(//tmp/c--Users-ralph-Documents-UCLL-B2S2-Advanced-AI-Advanced-AI-Project/9e890c22-a857-4dda-a442-b30d4af3dd67/tasks/**)",
+      "Bash(python -c \"import nbformat; nb=nbformat.read\\('notebooks/01_eda_zones.ipynb', as_version=4\\); print\\('valid notebook,', len\\(nb.cells\\), 'cells'\\)\")",
+      "Bash(python -W error -m src.context)",
+      "Bash(jupyter nbconvert *)",
+      "Bash(python -W error -m src.features.build_features)",
+      "Bash(python -c \"import optuna, shap, xgboost; print\\('optuna', optuna.__version__, 'shap', shap.__version__, 'xgboost', xgboost.__version__\\)\")",
+      "Bash(python -m src.models.xgb_forecast)",
+      "Bash(python -c \"import torch; print\\(torch.__version__, 'cuda:', torch.cuda.is_available\\(\\), 'cpu cores:', torch.get_num_threads\\(\\)\\)\")",
+      "Bash(python -m src.models.transformer_forecast)",
+      "PowerShell(python -c \"import torch; print\\(torch.__version__\\)\")",
+      "PowerShell(python -m src.models.transformer_forecast 2>&1)",
+      "PowerShell(python -c \"import sys; sys.path.insert\\(0,'.'\\); from src.models.transformer_forecast import TransformerForecast; print\\('imports OK'\\)\")",
+      "PowerShell(python -c \"import numpy; print\\('numpy ok'\\); import torch; print\\('torch ok'\\)\")",
+      "PowerShell(python -c \"import matplotlib; matplotlib.use\\('Agg'\\); import matplotlib.pyplot as plt; import numpy; import sklearn; import torch; print\\('all ok'\\)\")",
+      "PowerShell(python -c \"import math, pickle; from copy import deepcopy; from pathlib import Path; import matplotlib; matplotlib.use\\('Agg'\\); import matplotlib.pyplot as plt; import numpy; import pandas; import torch; import torch.nn; from sklearn.metrics import mean_absolute_error, mean_squared_error; from sklearn.preprocessing import StandardScaler; from torch.utils.data import DataLoader, TensorDataset; print\\('all ok'\\)\")",
+      "PowerShell(python -c \"import pandas; import torch; print\\('pandas-torch ok'\\)\")",
+      "PowerShell(python -c \"import torch; import pandas; print\\('torch-pandas ok'\\)\")",
+      "PowerShell(jupyter nbconvert --to notebook --execute notebooks/03_forecast_comparison.ipynb --output 03_forecast_comparison.ipynb 2>&1)",
+      "Bash(python -W error -m src.env.dispatcher_env)",
+      "PowerShell(python -m src.env.dispatcher_env 2>&1)",
+      "PowerShell(python -c \"from datetime import date; from src.env.dispatcher_env import DispatcherEnv; from src.env.forecast_service import ForecastService; from src.env.replay import replay; f = ForecastService\\(\\); env = DispatcherEnv\\(date=date\\(2026,4,30\\), forecaster=f, seed=42\\); r = replay\\(env, date\\(2026,4,30\\), seed=42\\); print\\(f'30/4 replay: calls={r[chr\\(34\\)+chr\\(110\\)+chr\\(95\\)+chr\\(116\\)+chr\\(111\\)+chr\\(116\\)+chr\\(97\\)+chr\\(108\\)+chr\\(95\\)+chr\\(99\\)+chr\\(97\\)+chr\\(108\\)+chr\\(108\\)+chr\\(115\\)+chr\\(34\\)]} sales={r[chr\\(34\\)+chr\\(110\\)+chr\\(95\\)+chr\\(116\\)+chr\\(111\\)+chr\\(116\\)+chr\\(97\\)+chr\\(108\\)+chr\\(95\\)+chr\\(115\\)+chr\\(97\\)+chr\\(108\\)+chr\\(101\\)+chr\\(115\\)+chr\\(34\\)]}'\\)\" 2>&1)"
     ]
   }
 }
