@@ -132,7 +132,7 @@ Per issue: wat gedaan, wat vlot ging, en waar we tegen problemen liepen.
 
 ---
 
-## Issue 1.6 — Tabular feature-set voor forecasting model
+## Issue 2.1 — Tabular feature-set voor forecasting model
 
 **Wat gedaan**
 - [src/features/build_features.py](src/features/build_features.py) met `build_features()`, `_aggregate_demand()` en `leave_one_day_out_splits()` als CV-helper.
@@ -156,7 +156,7 @@ Per issue: wat gedaan, wat vlot ging, en waar we tegen problemen liepen.
 
 ---
 
-## Issue 1.7 — XGBoost forecasting baseline
+## Issue 2.2 — XGBoost forecasting baseline
 
 **Wat gedaan**
 - [src/models/xgb_forecast.py](src/models/xgb_forecast.py) met `train()`, `predict()`, `_cross_validate()`, `evaluate_per_day()`, `evaluate_per_zone_bucket()`, `plot_shap()`, `save_artifact()`.
@@ -196,7 +196,7 @@ Best CV MAE (Optuna): **0.0608**. Best params: `max_depth=3, lr=0.077, n_estimat
 
 ---
 
-## Issue 1.8 — Transformer sequence model
+## Issue 2.3 — Transformer sequence model
 
 **Wat gedaan**
 - [src/models/transformer_forecast.py](src/models/transformer_forecast.py) met PyTorch implementatie:
@@ -1119,3 +1119,21 @@ Demo-app polish-pass over alle vier pagina's, plus deployment-instructies en een
 - Echte screenshot na een lokale rondrit door alle 4 tabs (incl. een dispatch-frame midden in de simulatie en een ingevuld comparison-resultaat).
 - Streamlit Cloud deploy + URL in README zodra het gedeployed is.
 - Eventueel: een mini-README in `app/` met tab-by-tab UX-screenshots voor in de eindrapport-bijlage.
+
+### Hotfix tijdens defense-runs — DQN n_vans-mismatch
+
+**Symptoom** — Bij een live-run met `n_karren=7` op de Comparison-page faalde `_load_dqn` met `RuntimeError: size mismatch for net.0.weight: copying a param with shape torch.Size([64, 31]) from checkpoint, the shape in current model is torch.Size([64, 15])`. De DQN-input-laag is fixed op de getrainde `obs_dim = 2 * n_vans + 1 = 31` (n_vans=15); bij andere `n_vans` past de eerste laag niet.
+
+**Diagnose** — Per agent:
+- Random / Greedy / Historical: n_vans-onafhankelijk (geen learned weights).
+- Tabular Q: `q.shape = (12, 4)` — 12 macro-buckets × 4 macros, dus ook n_vans-onafhankelijk.
+- DQN: alleen agent met fixed input-laag.
+
+**Fix (user-keuze: skip-met-warning)** — Geen drift in vergelijking, gewoon een eerlijke 4-agent comparison als de slider niet op 15 staat:
+- Nieuwe helper `_dqn_trained_n_vans()` (`@st.cache_resource`) leest `(input_dim - 1) // 2` uit het checkpoint config-blob en cachet de waarde.
+- [app/pages/3_Comparison.py](app/pages/3_Comparison.py): `run_all_agents` slaat DQN over als `n_karren != _dqn_trained_n_vans()`. Boven de "Run all agents"-knop verschijnt een `st.warning` met "DQN getraind op 15 karren — wordt overgeslagen bij N karren".
+- [app/pages/2_Dispatch.py](app/pages/2_Dispatch.py): als DQN gekozen wordt en `n_karren != 15`, toont `st.error` + `st.stop` direct na de run-knop, dus de gebruiker stuit nooit op een traceback.
+
+**Smoke-test** — `n_karren=7`, dag-type=werkdag: 3 baseline-agents + Q-learning runnen door zonder crash; Q-learning behaalt 18.8% answered vs Greedy 9.1% — comparison-narratief blijft staan ook zonder DQN.
+
+**Trade-off** — De default sidebar-waarde `n_karren=15` matcht de productie-config van Foubert én de DQN-training-config, dus voor 95% van de defense-flows blijft alles 5-agent. Alleen wanneer iemand opzettelijk de slider verschuift (stress-test) verdwijnt DQN. Dat is honest comparison > schijnbare volledigheid.

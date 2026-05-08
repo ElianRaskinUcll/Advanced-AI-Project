@@ -158,14 +158,36 @@ def predict_for(model_name: str, dag_type: str, temperature: float, neerslag: bo
 # ---------- Map rendering ----------
 
 def make_layer(hour_df: pd.DataFrame, vmax: float | None = None) -> pdk.Layer:
+    """Render alle 911 H3-cellen — footprint blijft altijd zichtbaar.
+
+    - Cellen met pred=0 krijgen een lichte grijs-crème backdrop zodat de
+      operating-area-vorm leesbaar blijft, ook als XGBoost weinig signaal
+      heeft (werkdag-data is sparse).
+    - Cellen met pred>0 krijgen een sqrt-genormaliseerde warme gradient
+      bovenop, zodat hot-spots scherp uitspringen.
+    - vmax = 95e percentiel van niet-nul cellen, zodat één uitschieter de
+      gradient niet platdrukt.
+    """
     df = hour_df.copy()
+    nonzero_mask = df["pred"] > 1e-6
     if vmax is None:
-        vmax = max(float(df["pred"].max()), 1e-6)
-    norm = (df["pred"] / vmax).clip(0, 1)
-    df["fill_r"] = (240 - 20 * norm).round().astype(int).clip(0, 255)
-    df["fill_g"] = (240 - 200 * norm).round().astype(int).clip(0, 255)
-    df["fill_b"] = (220 - 120 * norm).round().astype(int).clip(0, 255)
-    df["fill_a"] = (60 + 195 * norm).round().astype(int).clip(0, 255)
+        nonzero = df.loc[nonzero_mask, "pred"]
+        if len(nonzero) >= 5:
+            vmax = float(np.percentile(nonzero, 95))
+        elif len(nonzero) > 0:
+            vmax = float(nonzero.max())
+        else:
+            vmax = 1.0  # geen non-zero cellen → cosmetic vmax
+    vmax = max(vmax, 1e-6)
+    norm = np.sqrt((df["pred"] / vmax).clip(0, 1)).to_numpy()
+    nz = nonzero_mask.to_numpy()
+
+    # Backdrop kleuren voor pred=0: zacht grijs-crème, lage alpha (60).
+    # Hot-spot kleuren voor pred>0: warm zalmrood-gradient, alpha 130→255.
+    df["fill_r"] = np.where(nz, (240 - 20 * norm).round(), 210).astype(int).clip(0, 255)
+    df["fill_g"] = np.where(nz, (240 - 200 * norm).round(), 210).astype(int).clip(0, 255)
+    df["fill_b"] = np.where(nz, (220 - 120 * norm).round(), 195).astype(int).clip(0, 255)
+    df["fill_a"] = np.where(nz, (130 + 125 * norm).round(), 60).astype(int).clip(0, 255)
     df["pred_str"] = df["pred"].round(2).astype(str)
     return pdk.Layer(
         "H3HexagonLayer",
@@ -176,8 +198,20 @@ def make_layer(hour_df: pd.DataFrame, vmax: float | None = None) -> pdk.Layer:
         pickable=True,
         auto_highlight=True,
         extruded=False,
-        opacity=0.85,
+        opacity=0.9,
     )
+
+
+def render_map(model_label: str, hour_df: pd.DataFrame, vmax: float | None = None) -> None:
+    """Wrapper rond make_layer + make_deck met optionele caption als alle pred=0."""
+    n_nonzero = int((hour_df["pred"] > 1e-6).sum())
+    st.pydeck_chart(make_deck(make_layer(hour_df, vmax=vmax)))
+    if n_nonzero == 0:
+        st.caption(
+            f"ℹ️ **{model_label}** voorspelt 0 voor alle zones op dit uur "
+            "(werkdag-data is sparse). Backdrop = operating-area-footprint; "
+            "switch naar Transformer of een ander uur voor signaal."
+        )
 
 
 def make_deck(layer: pdk.Layer) -> pdk.Deck:
@@ -226,16 +260,16 @@ if model_choice == "Vergelijking":
     cmap_l, cmap_r = st.columns(2, gap="small")
     with cmap_l:
         st.subheader("XGBoost")
-        st.pydeck_chart(make_deck(make_layer(slice_hour(pred_xgb, hour), vmax=vmax)))
+        render_map("XGBoost", slice_hour(pred_xgb, hour), vmax=vmax)
         st.metric("Σ demand bij uur", f"{slice_hour(pred_xgb, hour)['pred'].sum():.1f}")
     with cmap_r:
         st.subheader("Transformer")
-        st.pydeck_chart(make_deck(make_layer(slice_hour(pred_tx, hour), vmax=vmax)))
+        render_map("Transformer", slice_hour(pred_tx, hour), vmax=vmax)
         st.metric("Σ demand bij uur", f"{slice_hour(pred_tx, hour)['pred'].sum():.1f}")
 else:
     pred_df = predict_for(model_choice, dag_type, temperatuur, neerslag)
     hour_df = slice_hour(pred_df, hour)
-    st.pydeck_chart(make_deck(make_layer(hour_df)))
+    render_map(model_choice, hour_df)
     m1, m2, m3 = st.columns(3)
     m1.metric("Σ demand bij uur", f"{hour_df['pred'].sum():.1f}")
     m2.metric("Aantal actieve zones", f"{(hour_df['pred'] > 0.05).sum()}")

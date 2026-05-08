@@ -47,6 +47,16 @@ DAG_TYPE_TO_DATE = {
 AGENT_NAMES = ["Random", "Greedy", "Historical", "Q-learning", "DQN"]
 
 
+@st.cache_resource(show_spinner=False)
+def _dqn_trained_n_vans() -> int:
+    """Lees uit het checkpoint hoeveel vans de DQN-policy verwacht.
+
+    obs_dim = 2 * n_vans + 1, dus n_vans = (input_dim - 1) // 2.
+    """
+    ckpt = torch.load(DQN_PATH, weights_only=False, map_location="cpu")
+    return (int(ckpt["config"]["input_dim"]) - 1) // 2
+
+
 # ---------- Cached resources ----------
 
 @st.cache_resource(show_spinner="Forecaster laden (eenmalig per session)…")
@@ -113,8 +123,14 @@ def _make_agent(name: str, env: DispatcherEnv, target_date: date_t):
 def run_all_agents(dag_type: str, n_karren: int, seed: int = 42) -> pd.DataFrame:
     forecaster = get_forecaster()
     target_date = DAG_TYPE_TO_DATE[dag_type]
+    # DQN's eerste-laag is fixed op de trained input_dim; bij andere n_vans
+    # zou load_state_dict crashen. We slaan hem dan over en de UI toont een
+    # warning. Andere 4 agents zijn n_vans-onafhankelijk.
+    skip_dqn = n_karren != _dqn_trained_n_vans()
     rows = []
     for name in AGENT_NAMES:
+        if name == "DQN" and skip_dqn:
+            continue
         env = DispatcherEnv(date=target_date, n_vans=n_karren, seed=seed, forecaster=forecaster)
 
         def factory(e, d, _name=name):
@@ -129,10 +145,20 @@ def run_all_agents(dag_type: str, n_karren: int, seed: int = 42) -> pd.DataFrame
 st.title("📊 Comparison")
 target_date = DAG_TYPE_TO_DATE[params["dag_type"]]
 st.caption(
-    f"Vergelijk alle 5 agents op **{target_date} ({params['dag_type']})** met "
+    f"Vergelijk alle agents op **{target_date} ({params['dag_type']})** met "
     f"**{params['n_karren']} karren**. Resultaten worden gecached per (dag-type, n_karren); "
     "opnieuw klikken met dezelfde sidebar laadt instantly."
 )
+
+_dqn_n_vans = _dqn_trained_n_vans()
+if params["n_karren"] != _dqn_n_vans:
+    st.warning(
+        f"⚠️ DQN is getraind op **{_dqn_n_vans} karren** (input-laag fixed) en wordt "
+        f"bij {params['n_karren']} karren overgeslagen. De andere 4 agents zijn "
+        "n_vans-onafhankelijk en draaien wél. Zet de slider op "
+        f"{_dqn_n_vans} om DQN mee te nemen.",
+        icon="🤖",
+    )
 
 run_clicked = st.button("▶ Run all agents", type="primary")
 
@@ -247,14 +273,34 @@ for col, (col_name, title, higher_better) in zip(chart_cols, metric_specs):
 # ---------- 4. Efficiency frontier ----------
 
 st.subheader("Efficiency frontier — omzet per gereden km")
-st.caption("Linksboven = ideaal (veel omzet, weinig km). Rechtsonder = inefficiënt.")
+st.caption(
+    "Linksboven = ideaal (veel omzet, weinig km). Rechtsonder = inefficiënt. "
+    "**X-as is log-schaal** zodat Random (vaak ~10× meer km dan de rest) niet "
+    "alle andere agents tot één punt platdrukt."
+)
+
+# Guard tegen distance=0 op log-schaal (nooit echt nul, maar veilig).
+scatter_df = df.assign(distance_km_plot=np.maximum(df["distance_km"], 0.1))
+
 scatter = (
-    alt.Chart(df)
-    .mark_circle(size=400, opacity=0.85)
+    alt.Chart(scatter_df)
+    .mark_circle(size=700, opacity=0.9, stroke="white", strokeWidth=2)
     .encode(
-        x=alt.X("distance_km:Q", title="Distance (km) — lager is beter"),
-        y=alt.Y("revenue_eur:Q", title="Revenue (€) — hoger is beter"),
-        color=alt.Color("agent:N", scale=alt.Scale(scheme="category10"), legend=None),
+        x=alt.X(
+            "distance_km_plot:Q",
+            title="Distance (km, log-schaal) — lager is beter",
+            scale=alt.Scale(type="log", nice=False, padding=10),
+        ),
+        y=alt.Y(
+            "revenue_eur:Q",
+            title="Revenue (€) — hoger is beter",
+            scale=alt.Scale(zero=False, padding=15),
+        ),
+        color=alt.Color(
+            "agent:N",
+            scale=alt.Scale(scheme="category10"),
+            legend=alt.Legend(title="Agent", orient="right"),
+        ),
         tooltip=[
             alt.Tooltip("agent:N"),
             alt.Tooltip("pct_answered:Q", title="% answered", format=".1f"),
@@ -263,13 +309,13 @@ scatter = (
             alt.Tooltip("mean_response_min:Q", title="Response", format=".1f"),
         ],
     )
-    .properties(height=380)
+    .properties(height=420)
 )
 labels = (
-    alt.Chart(df)
-    .mark_text(align="left", dx=12, dy=-4, fontSize=13, fontWeight="bold")
+    alt.Chart(scatter_df)
+    .mark_text(align="left", baseline="middle", dx=18, fontSize=14, fontWeight="bold")
     .encode(
-        x="distance_km:Q",
+        x="distance_km_plot:Q",
         y="revenue_eur:Q",
         text="agent:N",
         color=alt.Color("agent:N", scale=alt.Scale(scheme="category10"), legend=None),

@@ -63,6 +63,13 @@ def get_forecaster() -> ForecastService:
     return ForecastService()
 
 
+@st.cache_resource(show_spinner=False)
+def _dqn_trained_n_vans() -> int:
+    """obs_dim = 2*n_vans + 1, dus n_vans = (input_dim - 1) // 2."""
+    ckpt = torch.load(DQN_PATH, weights_only=False, map_location="cpu")
+    return (int(ckpt["config"]["input_dim"]) - 1) // 2
+
+
 @st.cache_resource
 def get_zone_centroids(_zones: tuple[str, ...]) -> np.ndarray:
     return np.array([h3.cell_to_latlng(z) for z in _zones], dtype="float64")
@@ -286,6 +293,15 @@ with ctrl3:
 for k, default in [("trajectory", None), ("step_idx", 0), ("playing", False)]:
     if k not in st.session_state:
         st.session_state[k] = default
+
+_dqn_n_vans_required = _dqn_trained_n_vans()
+if agent_name == "DQN" and params["n_karren"] != _dqn_n_vans_required:
+    st.error(
+        f"⚠️ DQN is getraind op **{_dqn_n_vans_required} karren** (input-laag fixed). "
+        f"Zet de sidebar-slider op {_dqn_n_vans_required} of kies een andere agent.",
+        icon="🤖",
+    )
+    st.stop()
 
 if run_clicked:
     st.session_state.trajectory = run_full_day(
