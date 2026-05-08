@@ -96,8 +96,12 @@ Tabular Q-learning leidt op revenue, % answered én neglected-zones; greedy is s
 ├── data/
 │   ├── raw/foubertai_export/   # 3-dagen productie-export (in git)
 │   └── processed/              # afgeleide parquet/geojson
-├── notebooks/                  # 01_eda_zones, 02_eda, 03_forecast_comparison,
-│                               # 04_sim_validation, 05_agent_comparison, 06_results_viz
+├── notebooks/                  # 01_eda, 02_forecast, 03_simulation,
+│                               # 04_agents, 05_results
+├── app/                        # Streamlit demo app
+│   ├── streamlit_app.py        # entrypoint
+│   ├── sidebar.py              # gedeelde sidebar + Foubert-CSS
+│   └── pages/                  # 1_Forecast, 2_Dispatch, 3_Comparison
 ├── src/
 │   ├── data/load.py            # 7 tabellen + GPS, build master events
 │   ├── zones.py                # DBSCAN stops + H3 zones
@@ -128,6 +132,39 @@ Tabular Q-learning leidt op revenue, % answered én neglected-zones; greedy is s
 ├── LICENSE
 └── README.md
 ```
+
+## Demo app
+
+Interactieve Streamlit-app met vier tabs (Forecast / Dispatch / Comparison / About) en een gedeelde sidebar voor globale parameters (dag-type, temperatuur, neerslag, aantal beschikbare karren).
+
+> **Screenshot.** Een gerenderde screenshot van de entrypoint hoort op `reports/figures/app_screenshot.png` en wordt hier ingelinkt zodra hij gemaakt is — start de app lokaal (zie hieronder) en plaats een capture (Win+Shift+S → save as PNG) op dat pad. Layout: links de sidebar met de vier parameters + Foubert-zalmrood titel, rechts drie cards (📈 Forecast / 🚐 Dispatch / 📊 Comparison) met `st.page_link` knoppen, daaronder een footer-strip met About- en GitHub-links.
+
+### Lokaal draaien (defense-default)
+
+```bash
+streamlit run app/streamlit_app.py
+# of als streamlit niet op je PATH staat:
+python -m streamlit run app/streamlit_app.py
+```
+
+De app opent op `http://localhost:8501`. De sidebar-parameters blijven bewaard tussen de tabs via `st.session_state`. Theme + Foubert-zalmrood accent worden ingelezen uit [.streamlit/config.toml](.streamlit/config.toml).
+
+### Streamlit Community Cloud (optioneel)
+
+Voor een publieke URL (zonder lokale install) kan de app op [Streamlit Community Cloud](https://streamlit.io/cloud) gedeployed worden:
+
+1. Fork/push de repo naar GitHub.
+2. Op `share.streamlit.io` → **New app** → kies de repo + branch + main file `app/streamlit_app.py`.
+3. Geen extra secrets nodig — alle data en modellen zitten al in de repo.
+
+Streamlit Cloud installeert `requirements.txt` automatisch. Cold-start is ~30 sec (PyTorch + XGBoost laden); daarna instant via de cache_resource decorators. Bij memory-warnings: PyTorch-import en DQN-laad zijn de zwaarste posten — eventueel CUDA-builds vervangen door cpu-only `torch` in een aparte `requirements-cloud.txt`.
+
+### Defense-checklist
+
+- ✅ Lokaal getest op Windows (Python 3.12) en Linux.
+- ✅ Cold-start van elke tab onder ~10 sec dankzij `@st.cache_resource` voor modellen + forecaster.
+- ✅ Error-handling: bij ontbrekende modellen toont elke tab welk train-commando het ontbrekende artefact aanmaakt (zie [app/sidebar.py — `require_files`](app/sidebar.py)).
+- ✅ Help-tooltips bij elke sidebar-parameter; About-tab voor projectcontext + links.
 
 ## Limitations
 

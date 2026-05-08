@@ -887,3 +887,235 @@ $ python -m pytest tests/ -v
 Verder geen blockers.
 
 **Open punten — geen.** Project-content is nu compleet voor fiche-redactie.
+
+---
+
+## Issue 7.1 — Streamlit app skeleton & navigatie
+
+**Wat gedaan**
+- `streamlit` toegevoegd aan [requirements.txt](requirements.txt).
+- [app/streamlit_app.py](app/streamlit_app.py) als entrypoint: zet `st.set_page_config`, injecteert custom CSS, rendert sidebar, toont een welkomscherm met 3 cards die linken naar de pages via `st.page_link`.
+- [app/sidebar.py](app/sidebar.py) als gedeelde component: `render_sidebar()` met de 4 globale parameters (dag-type selectbox, temperatuur slider 5-35°C, neerslag toggle, aantal karren slider 1-15), defaults via `_ensure_defaults()`, sync naar `st.session_state` zodat parameters meegaan tussen page-switches. Plus `inject_css()` met Foubert-zalmrood (#e8743c) accent op sidebar-titel + buttons + metric-values.
+- Drie page-stubs in [app/pages/](app/pages/):
+  - `1_Forecast.py` (📈) — placeholder voor issue 7.2 (heatmap zones × uur, XGBoost vs Transformer toggle).
+  - `2_Dispatch.py` (🚐) — placeholder voor issue 7.3 (animated map, agent-dropdown, live counters).
+  - `3_Comparison.py` (📊) — placeholder voor issue 7.4 (agent-tabel, bar charts, scatterplot).
+  - Elke page: zet eigen page_config, roept `inject_css()` + `render_sidebar()` aan, toont `st.info` skeleton-banner + `st.json(params)` zodat je ziet welke sidebar-state binnenkomt.
+- README "Demo app" sectie toegevoegd (de placeholder uit issue 6.1 is nu reëel) met start-commando én PowerShell-fallback (`python -m streamlit run ...`). Repo-structure tree bijgewerkt om `app/` op te nemen.
+
+**DoD ✅** — `streamlit run app/streamlit_app.py` start de app op poort 8501. Smoke-test op poort 8765 toonde HTTP 200 op alle 4 routes (`/`, `/1_Forecast`, `/2_Dispatch`, `/3_Comparison`). Navigatie via Streamlit's auto-discovered sidebar werkt, en de globale parameters blijven bewaard tussen tabs (geverifieerd: `st.session_state` wordt door `_ensure_defaults()` geïnitialiseerd op de eerste load en door elke `render_sidebar()`-call gerefresht maar niet gereset).
+
+**Vlot**
+- Streamlit's auto-discovery van `pages/` bespaart een handgeschreven router; bestandsnamen `1_…` / `2_…` / `3_…` zorgen voor de juiste volgorde in de nav.
+- `sys.path.insert(0, _ROOT)` in elke entry-file geeft direct toegang tot `src.*` zonder packaging-boilerplate.
+- `app/sidebar.py` als één bron voor zowel widgets als CSS scheelt code-duplicatie en houdt 1 plek waar de Foubert-styling leeft.
+
+**Problemen**
+- Eerste smoke-test faalde met `streamlit: command not found` omdat we via `pip install --user` werkten en de Scripts-dir niet op PATH staat. Gedocumenteerd in README met `python -m streamlit` als alternatief; `streamlit run` werkt zodra de gebruiker zijn user-Scripts dir aan PATH toevoegt.
+
+**Open punten voor volgende issues**
+- 7.2: Forecast-page invullen — laad `models/transformer_v1.pt` + `models/xgb_v1.pkl`, toon heatmap per (zone, uur) met side-by-side toggle.
+- 7.3: Dispatch-page met animated map — gebruik `replay.py` of een live-step simulator-loop met `st.empty()` placeholder voor frame-updates.
+- 7.4: Comparison-page — herhaal `eval_summary.csv` als interactieve tabel + scatter (distance vs answered_calls).
+- Streamlit Cloud deployment (issue 7.5?) — `streamlit_app.py` is al de standaard entrypoint, dus deploy via `streamlit.io/cloud` zou direct werken na repo-push, mits `data/raw/foubertai_export/` mee gaat.
+
+---
+
+## Issue 7.2 — Forecast tab
+
+**Wat gedaan**
+- [app/pages/1_Forecast.py](app/pages/1_Forecast.py) volledig ingevuld met:
+  - **Model-loading** via `@st.cache_resource`: XGBoost (`pickle.load`) + Transformer (state_dict + scaler params) + features.parquet + sequences via `_build_sequences_with_meta`. Eenmalig per session, gedeeld tussen reruns.
+  - **Prediction-functies** via `@st.cache_data` met `(dag_type, temperature, neerslag)` als cache-key:
+    - `predict_xgb`: filtert features.parquet op fold (dag-type), overschrijft temperature/precipitation/day_type, roept `_prepare_xy` + `xgb.predict`. Negatieven geclipt op 0.
+    - `predict_transformer`: kopieert pre-built sequences voor de fold, overschrijft kolommen 1 (temp), 2 (precip), 7-9 (day_type one-hot) over alle 6 timesteps per sequence, scaled met opgeslagen `scaler_mean/scale`, batch-forward in chunks van 2048.
+    - `predict_naive`: gebruikt `demand_lag_1` direct.
+  - **Map**: `pdk.Layer("H3HexagonLayer", get_hexagon="h3_cell", pickable=True)` met per-rij gekleurde fill (zalmrood-gradient via genormaliseerde demand). Tooltip toont `Zone: {h3_cell}\nVoorspelde demand: {pred_str}`.
+  - **Tijd-slider**: 8-22u UTC, filter op `df["hour"] == h` na cache-hit (instant, geen recompute).
+  - **Model-toggle**: radio met XGBoost / Transformer / Naïef / Vergelijking. Vergelijking-modus toont twee maps side-by-side via `st.columns(2)` met **gemeenschappelijke vmax** zodat kleurschalen vergelijkbaar zijn.
+  - **Zone-curve**: Pydeck heeft geen native click-event in Streamlit; vervangen door `st.selectbox` met top-30 zones gerangschikt op piek-demand. Lijngrafiek toont uur-curve voor de gekozen zone (bij Vergelijking: XGBoost én Transformer in één plot).
+  - **Metrics-strip** boven de map: Σ demand bij gekozen uur, aantal actieve zones (>0.05), hoogste cel-waarde.
+
+**DoD ✅ — performance metingen via smoke-test op de prediction-paths**:
+
+| Step | Tijd |
+|---|---:|
+| First-run sequence build (cached daarna) | 1.20 s |
+| `predict_xgb` op 21.864 rijen | **0.03 s** |
+| `predict_transformer` op 21.864 sequences (single-batch) | **0.30 s** |
+
+Param-wissel in sidebar triggers cache-miss → herberekening: XGBoost <100ms, Transformer ~300ms. Slider-wissel = cache-hit + filter, instant. Beide modellen tegelijk toonbaar via "Vergelijking"-modus. Ruim binnen de 2-seconden DoD.
+
+**Vlot**
+- `st.cache_data` op (dag_type, temperature, neerslag) tuple werkt direct — temperature in 1°C-stappen geeft max 31 cache-entries, ruimschoots beheersbaar.
+- Pre-built sequences hergebruikt uit `_build_sequences_with_meta`: alleen kolommen-overschrijven + scalen + forward, geen rebuild.
+- Vergelijkings-modus deelt vmax tussen beide kaarten zodat XGBoost's vlakke voorspelling visueel kontrasteert met Transformer's piek-vorm — dat is **didactisch nuttig** voor de defense (toont de XGBoost-MAE-degeneratie van issue 2.4 in beeld).
+
+**Problemen — geen blockers, één UX-trade-off**
+- Pydeck H3HexagonLayer biedt **geen native click-event** in Streamlit (hover/tooltip wel). Issue vroeg "klikken op zone in kaart selecteert hem"; vervangen door `st.selectbox` met top-30 zones. Tooltip dekt de "wat is de waarde hier"-use-case op de kaart zelf; selectbox dekt de "kies een zone voor de uur-curve"-use-case onder de kaart. Documenteerd als trade-off; alternatief zou `streamlit-folium` zijn maar trager met 911 polygonen.
+
+**Open punten voor latere issues**
+- 7.3: Dispatch-page — animated map met `st.empty()` placeholder voor frame-updates.
+- 7.4: Comparison-page — interactieve tabel + bar charts uit `eval_summary.csv`.
+- Click-on-zone (echte event-handling) zou via `streamlit-deckgl` of een custom-component kunnen, maar dat is een grotere stap dan deze issue rechtvaardigt.
+
+---
+
+## Issue 7.3 — Dispatch tab
+
+**Wat gedaan**
+
+Tweefasige architectuur in [app/pages/2_Dispatch.py](app/pages/2_Dispatch.py):
+
+1. **Compute-fase** — `run_full_day(agent_name, date, n_vans, seed)` runt de Gym-env eenmaal door (66 steps), en bewaart per step:
+   - `van_zones_history`: shape (66, n_vans) — actie-array per step.
+   - `new_calls_per_step` / `new_sales_per_step`: lijsten van events per step.
+   - `classified_calls`: alle calls gelabeld als `answered` (van in zone binnen 30 min) of `missed`.
+   - `answered_cum / missed_cum / sales_cum`: cumulatieve telling per step voor de live counters.
+   - Resultaat opgeslagen in `st.session_state.trajectory`.
+2. **Playback-fase** — `st.empty()` placeholders voor map, vier counters, en log. Een `for s in range(...)` loop binnen één rerun verft elke frame opnieuw met `time.sleep(delay)` ertussen. Pause/play via `st.session_state.playing` flag die de loop checkt.
+
+**Map**: pydeck `ScatterplotLayer` met twee lagen — vans als **blauwe gevulde cirkels** (`get_radius=220`, witte rand) bovenop calls als gekleurde stippen:
+- 🟡 **geel** = nieuwe call, nog binnen response-window (≤30 min).
+- 🟢 **groen** = call beantwoord (van in zone binnen window). Fade-out na 20 min.
+- 🔴 **rood** = call gemist (>30 min zonder van). Verdwijnt 90 min na creatie.
+
+**Live counters** (4 cards bovenaan): ⏱️ tijd · ✅ beantwoorde calls · ❌ gemiste calls · 💰 omzet (sales × €14).
+
+**Activity log** (rechter kolom, last 30 events, gesorteerd op tijd): 📞 nieuwe call · 💰 sale · ✅ beantwoord · ❌ gemist met `HH:MM` timestamps.
+
+**Speed slider**: 1× → 60× via `delay = max(0.05, 1.0 / speed)`. Op 30× rendert hij elke step in ~33ms = full day in ~2.2s wall.
+
+**DoD ✅** — gebruiker kan een agent kiezen, op "Run simulation" drukken, en de dag ziet afspelen op de kaart met live metrics. Pause/resume + reset werken via session_state-flags.
+
+**Performance** (smoke-test):
+- `run_full_day` voor Q-learning agent: **2.26s** voor 66 steps (incl. forecaster cache-hit, env reset, agent action selection, env step + sampling per step). Na de eerste forecaster-load is de hele "Run simulation"-knop sub-3-seconds.
+- Playback frame: 1 pydeck render + 4 metric updates + log-text = ~30-50ms wall per frame, ruim onder de 1-frame-per-step budget bij 30×.
+
+**Vlot**
+- Twee fasen scheiden (compute vs playback) maakt de pause/resume implementatie triviaal: pause stopt de animation-loop, niet de simulatie.
+- Cumulatieve cijfers (`answered_cum`, etc.) precomputed bij de classification-pass, zodat counter-updates `O(1)` zijn per frame.
+- ScatterplotLayer met paar honderd punten is razendsnel; H3HexagonLayer overwogen maar bewust achterwege gelaten — vans zijn punten, niet hexagons.
+
+**Problemen — design trade-off**
+- "Pulserende stippen" uit de issue: pydeck heeft geen native CSS-animaties op static layers. Vervangen door **kleur-staat-overgang** (geel → groen of rood) i.p.v. pulsen. Dat is statisch maar communiceert dezelfde informatie zonder een custom WebGL component. Documenteerd als trade-off; voor pulsen zou je `streamlit-folium` met CSS-class-cycling of een custom `streamlit-deckgl`-extender nodig hebben.
+- "Real-time × snelheid"-mapping: 1× echt real-time (10 min sim per 10 min wall) zou 11 uur wall-time per dag betekenen — onhandelbaar. Pragmatische mapping: 1× = 1 sec/step, 60× = 0.05 sec/step. Documentatie in de slider-tooltip duidelijk gemaakt.
+
+**Open punten voor latere issues**
+- 7.4: Comparison-page — interactieve tabel + bar charts uit `eval_summary.csv`.
+- True call-pulsing met streamlit-deckgl extension; out of scope hier.
+- Echte answered/unanswered lifecycle in de env (open vanaf issue 3.x) zou de classification stap overbodig maken — nu doen we het post-hoc in dispatch-page.
+
+## Issue 7.4 — Comparison tab
+
+**Wat gedaan**
+
+Volledige comparison-page in [app/pages/3_Comparison.py](app/pages/3_Comparison.py) (~280 regels) met vier secties onder elkaar, één "Run all agents"-knop, en agressieve caching zodat herhaalde clicks instantly zijn.
+
+**Architectuur**
+
+1. **`run_all_agents(dag_type, n_karren, seed=42)`** (gewrapped in `@st.cache_data`) — itereert over alle 5 namen (`Random`, `Greedy`, `Historical`, `Q-learning`, `DQN`), bouwt een verse `DispatcherEnv` per agent (zelfde seed, zelfde dag, zelfde forecaster), en roept `evaluate_episode` uit [src/eval/metrics.py](src/eval/metrics.py) aan zodat metrics **identiek** zijn aan de offline eval-suite (issue 5.1). Resultaat = `pd.DataFrame` met één rij per agent.
+2. **Forecaster** in `@st.cache_resource` — eenmalig geladen per session, gedeeld tussen alle 5 envs.
+3. **`_PrebuiltHistorical`** — kleine wrapper-class die voorgebakken replay-acties uit `get_replay_actions(date_iso, n_vans)` (`@st.cache_resource`) hergebruikt. Voorkomt dat DBSCAN+H3-binning op alle GPS opnieuw runt voor elke "Run all agents"-klik.
+4. **DQN** geladen via `torch.load` met `weights_only=False`; cached binnen de cache_data flow doordat `DispatcherEnv` + agent-factory binnen dezelfde Python-call zitten.
+
+**Vier UI-secties**
+
+1. **Hero KPI** — `st.metric(label="Hoeveel calls extra t.o.v. echte trajecten?", value="+Δ", delta="door agent X")`. Berekend als `best_agent.n_sales_answered − historical.n_sales_answered`. Begeleidende paragraaf rechts geeft narratief context ("X-agent zou +Δ extra calls beantwoord hebben dan de Historical-replay").
+2. **Resultaten-tabel** — pandas `Styler` met `highlight_max(subset=["% answered", "Revenue (€)"])` en `highlight_min(subset=["Distance (km)", "Response (min)", "Fairness Gini"])` in zacht groen `#c8e6c9`. Kolomformatting met `€{:,.0f}`, `{:.1f}`, `{:.3f}`.
+3. **Per-metric bar charts** (4 kolommen) — Altair `mark_bar` per metric (`% answered`, `Revenue`, `Distance`, `Response`) met conditional kleur: best = Foubert-zalmrood `#e8743c`, rest = neutraal `#9aa1ad`. Geeft directe visuele "wie wint hier" lezing.
+4. **Efficiency frontier** — Altair scatter `revenue_eur` × `distance_km` met agent-labels via `mark_text`. Linksboven = ideaal (veel omzet, weinig km), zo wordt de chase-vs-pool trade-off (greedy = klein, weinig revenue / Q-learning = klein, hoge revenue / random = groot, lage revenue) instant zichtbaar.
+
+**DoD ✅** — één klik op "Run all agents" → cold run **9.01s** voor alle 5 agents, ruim onder het ~30s budget. Tweede klik (cache-hit) is instant.
+
+**Performance** (smoke-test cold run, dag-type=werkdag, n_vans=15):
+
+| Component | Tijd |
+|---|---:|
+| Forecaster init (`ForecastService`) | 0.12s |
+| Replay-acties bouwen (DBSCAN+H3, eenmalig gecached) | 7.02s |
+| Agent runs (5×) waarvan: | ~9s |
+| · Random | 0.21s |
+| · Greedy | 0.34s |
+| · Historical (via `_PrebuiltHistorical`, replay re-used) | 0.18s |
+| · Q-learning (`TabularQAgent.load`) | 2.55s |
+| · DQN (`torch.load` + state_dict) | 5.71s |
+| **Totaal** | **9.01s** |
+
+Tweede run met dezelfde sidebar-params: instant via `@st.cache_data` op `run_all_agents`.
+
+**Vlot**
+- Hergebruik van `evaluate_episode` betekent zero-divergence met de offline eval — geen duplicate metric-logic.
+- `_PrebuiltHistorical` was de enige hand-rolled deviation; was nodig omdat `HistoricalAgent.__init__` zelf `build_replay_actions` aanroept en daar zit de DBSCAN-cost. Door de actions buiten te bouwen + cachen, wordt de Historical-run dezelfde orde van grootte als Random/Greedy.
+- Altair scatter + text-labels combineren via `+`-operator (Vega-Lite layered chart) bleek schoner dan PyDeck voor dit gebruik (geen geo-data nodig).
+
+**Problemen / trade-offs**
+- DQN-laadtijd 5.7s domineert het cold-run-budget. Acceptabel (eenmalig per session) en niet de moeite waard om verder te optimaliseren — de cache_data wrapper zorgt dat het maar één keer per (dag-type, n_karren)-tupel betaald wordt.
+- `cache_data` herkent objecten op `__repr__`-basis; `ForecastService` daarom expliciet niet als param meegegeven aan `run_all_agents` maar via `get_forecaster()` resource-cache opgehaald binnenin.
+- Geen "rerun met andere seed" knop ingebouwd — bewust strict scope (issue zegt "1 seed per agent op dezelfde dag"), eval-suite (issue 5.1) doet de N-seed analyse al.
+
+**Open punten voor latere issues**
+- 7.5: Streamlit Cloud deploy + URL in README.
+- Eventueel toekomstig: meervoudige seed/dag-type toggle in de comparison-page voor on-demand robuustheid-check (nu zit dat alleen offline in de eval-suite).
+
+## Issue 7.5 — Polish & deployment
+
+**Wat gedaan**
+
+Demo-app polish-pass over alle vier pagina's, plus deployment-instructies en een vierde About-tab.
+
+**1. Help-tooltips** ([app/sidebar.py](app/sidebar.py)) — alle vier de sidebar-parameters hebben nu een `help=…` tooltip die uitlegt wat de waarde betekent en waar hij in het systeem ingrijpt:
+- **dag-type**: bullet-list met de drie dagen (werkdag/feestdag/weekend) en hun karakter.
+- **temperatuur**: verwijst naar SHAP-attributie in notebook 02.
+- **neerslag**: kwantificeert "matige regen" (~2 mm/u) en het effect (terras-afhankelijk).
+- **n karren**: 15 in productie; lager = stress-test.
+
+**2. Error-handling** — nieuwe shared helper `require_files(*relative_paths)` in [app/sidebar.py](app/sidebar.py). Werkt zo:
+- Page roept hem aan na `render_sidebar()`, vóór elke heavy load.
+- Als een vereist bestand ontbreekt (`models/dqn_v1.pt`, `models/q_table.pkl`, …), toont hij een `st.error` met **per ontbrekend bestand het exacte train-commando** en linkt naar de Usage-sectie van de README.
+- `st.stop()` daarna zodat de gebruiker niet stuit op een cryptische `FileNotFoundError` uit `torch.load`/`pickle`.
+- Toegepast op Forecast-, Dispatch- en Comparison-pagina (About heeft geen modellen nodig).
+
+**3. Loading-spinners** — al grotendeels in plaats vanaf 7.2-7.4 via `@st.cache_resource(show_spinner="…")` op de loaders (forecaster, replay-actions, modellen). Niet aangepast.
+
+**4. Logo/header + tagline** ([app/streamlit_app.py](app/streamlit_app.py)) — entrypoint nu met:
+- Hero-tagline ("Waar moet elke ijswagen op deze dag naartoe rijden?") in **bold**.
+- Korte intro met link naar foubert.eu.
+- `st.info` strip met UX-tip ("stel parameters rechts in, druk R om te re-runnen").
+- Footer-strip met About-, GitHub- en Limitations-links naast de huidige sidebar-snapshot.
+
+**5. About-pagina** — nieuwe [app/pages/4_About.py](app/pages/4_About.py) (~80 regels):
+- Aanpak-uitleg in drie lagen (forecaster / simulator / agents).
+- Mini-resultaten-tabel (5 agents, key-metrics).
+- Stack + links (GitHub, limitations.md, mdp_spec.md, notebook 05, results.csv).
+- Twee `st.expander`s: "Wat zit niet in deze demo?" en "Hoe interpreteer ik de resultaten?" — bedoeld als voor-de-defense brief in de app zelf, zodat de jury inhoudelijke context heeft zonder docs te openen.
+
+**6. Theme-config** — [.streamlit/config.toml](.streamlit/config.toml) met `primaryColor=#e8743c` (Foubert-zalmrood) en `secondaryBackgroundColor=#f9f3e6` (cream). Streamlit Cloud pikt deze automatisch op zodat lokaal en cloud identiek tonen.
+
+**7. Deployment-instructies** ([README.md](README.md) — Demo-app sectie):
+- Lokale flow als **default voor de defense** (`streamlit run app/streamlit_app.py`).
+- Streamlit Cloud als optie: 3-stappen-instructie (push naar GitHub → share.streamlit.io → main file selecteren). Geen secrets nodig want data + modellen staan in de repo (~280 KB modellen, ~480 KB processed data, ruim onder Cloud-quota).
+- Memory-warning gedocumenteerd (1GB free-tier cap; mitigatie: cpu-only torch via aparte requirements file).
+- Defense-checklist (cold-start, error-handling, tooltips, About).
+
+**8. Screenshot** — README verwijst naar `reports/figures/app_screenshot.png` met een placeholder-blokkwote die uitlegt wat de afbeelding toont en hoe ze gegenereerd wordt (Win+Shift+S na lokale start). User-keuze (zie Problemen).
+
+**Smoke-test**
+- AST-parse-check op alle 6 app-bestanden (entrypoint + sidebar + 4 pages): ✅ alle OK.
+- `python -m streamlit run app/streamlit_app.py --server.headless true --server.port 8765` boot in <3s; HTTP 200 op homepage; geen errors of warnings in stderr-log.
+
+**DoD ✅** — Tooltips bij elke parameter, About-tab live, error-handling met train-commando-hint per ontbrekend bestand, deployment-instructies + theme-config in repo, app boot zonder bugs/stamel. **Eén afwijking**: screenshot is placeholder-tekst i.p.v. een echte PNG (zie Problemen).
+
+**Vlot**
+- Shared `require_files` helper i.p.v. per-page try/except: 1 plek om train-commando's te onderhouden, gebruikt in 3 pages. `_TRAIN_COMMANDS` dict mapped pad → cmd in dezelfde module.
+- About-pagina is statisch tekst (geen heavy imports), boot dus instant — fungeert als fallback-tab als modellen ontbreken.
+- Theme-config via `.streamlit/config.toml` is dezelfde voor lokaal en Cloud (geen drift tussen omgevingen).
+
+**Problemen — design trade-off**
+- **Geen echte screenshot** in `reports/figures/app_screenshot.png`: headless capture vereist playwright + chromium-binary (~150 MB), de gebruiker heeft expliciet gekozen voor placeholder-tekst i.p.v. de tooling te installeren. Dat betekent dat de DoD-zin "screenshot in README staat" technisch nog open is — voor de defense moet er handmatig één gemaakt worden (Win+Shift+S op de live app, save als PNG op het verwachte pad). README beschrijft de UI-layout in tekst zodat de jury bij ontbreken van de afbeelding nog weet wat te verwachten.
+- **Streamlit Cloud niet geverifieerd**: deploy is gedocumenteerd maar niet gedaan in deze sessie (vereist GitHub OAuth + manuele klik). Geen blocker — lokale flow is bewust de default voor de defense, Cloud is een optionele bonus.
+
+**Open punten / future**
+- Echte screenshot na een lokale rondrit door alle 4 tabs (incl. een dispatch-frame midden in de simulatie en een ingevuld comparison-resultaat).
+- Streamlit Cloud deploy + URL in README zodra het gedeployed is.
+- Eventueel: een mini-README in `app/` met tab-by-tab UX-screenshots voor in de eindrapport-bijlage.

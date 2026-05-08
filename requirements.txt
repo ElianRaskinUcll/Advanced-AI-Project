@@ -10,3 +10,4 @@ optuna
 shap
 torch
 gymnasium
+streamlit
