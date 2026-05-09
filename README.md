@@ -71,13 +71,13 @@ Notebooks voor exploratie en analyse staan in `notebooks/` (EDA, sim-validatie, 
 
 **Agent ranking** ([results/eval_summary.csv](results/eval_summary.csv), mean over 3 dagen × 5 seeds):
 
-| Agent | % calls answered | Revenue (€) | Distance (km) | Response (min) | Neglected zones |
-|---|---:|---:|---:|---:|---:|
-| **q_learning** | **30.6** | **2.765** | 1.947 | 57 | **1.9 %** |
-| dqn | 28.1 | 2.603 | 3.703 | 78 | 3.6 % |
-| historical (echte trajecten) | 20.4 | 1.659 | 4.766 | 122 | 9.0 % |
-| greedy (nearest free van) | 19.5 | 1.575 | **1.121** | **22** | 2.3 % |
-| random | 14.7 | 1.085 | 12.677 | 149 | 22.1 % |
+| Agent                        | % calls answered | Revenue (€) | Distance (km) | Response (min) | Neglected zones |
+| ---------------------------- | ---------------: | ----------: | ------------: | -------------: | --------------: |
+| **q_learning**               |         **30.6** |   **2.765** |         1.947 |             57 |       **1.9 %** |
+| dqn                          |             28.1 |       2.603 |         3.703 |             78 |           3.6 % |
+| historical (echte trajecten) |             20.4 |       1.659 |         4.766 |            122 |           9.0 % |
+| greedy (nearest free van)    |             19.5 |       1.575 |     **1.121** |         **22** |           2.3 % |
+| random                       |             14.7 |       1.085 |        12.677 |            149 |          22.1 % |
 
 Tabular Q-learning leidt op revenue, % answered én neglected-zones; greedy is sneller in response-time maar haalt minder totale revenue (chase-vs-pool trade-off). Detail-analyse in [notebooks/05_agent_comparison.ipynb](notebooks/05_agent_comparison.ipynb).
 
@@ -137,8 +137,6 @@ Tabular Q-learning leidt op revenue, % answered én neglected-zones; greedy is s
 
 Interactieve Streamlit-app met vier tabs (Forecast / Dispatch / Comparison / About) en een gedeelde sidebar voor globale parameters (dag-type, temperatuur, neerslag, aantal beschikbare karren).
 
-> **Screenshot.** Een gerenderde screenshot van de entrypoint hoort op `reports/figures/app_screenshot.png` en wordt hier ingelinkt zodra hij gemaakt is — start de app lokaal (zie hieronder) en plaats een capture (Win+Shift+S → save as PNG) op dat pad. Layout: links de sidebar met de vier parameters + Foubert-zalmrood titel, rechts drie cards (📈 Forecast / 🚐 Dispatch / 📊 Comparison) met `st.page_link` knoppen, daaronder een footer-strip met About- en GitHub-links.
-
 ### Lokaal draaien (defense-default)
 
 ```bash
@@ -161,10 +159,10 @@ Streamlit Cloud installeert `requirements.txt` automatisch. Cold-start is ~30 se
 
 ### Defense-checklist
 
-- ✅ Lokaal getest op Windows (Python 3.12) en Linux.
-- ✅ Cold-start van elke tab onder ~10 sec dankzij `@st.cache_resource` voor modellen + forecaster.
-- ✅ Error-handling: bij ontbrekende modellen toont elke tab welk train-commando het ontbrekende artefact aanmaakt (zie [app/sidebar.py — `require_files`](app/sidebar.py)).
-- ✅ Help-tooltips bij elke sidebar-parameter; About-tab voor projectcontext + links.
+- Lokaal getest op Windows (Python 3.12) en Linux.
+- Cold-start van elke tab onder ~10 sec dankzij `@st.cache_resource` voor modellen + forecaster.
+- Error-handling: bij ontbrekende modellen toont elke tab welk train-commando het ontbrekende artefact aanmaakt (zie [app/sidebar.py — `require_files`](app/sidebar.py)).
+- Help-tooltips bij elke sidebar-parameter; About-tab voor projectcontext + links.
 
 ## Limitations
 
